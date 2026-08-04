@@ -1,0 +1,259 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="EvalRoute 评测驱动的自适应大模型基础设施平台" />
+    <meta name="theme-color" content="#0b1020" />
+    <title>EvalRoute AI 平台</title>
+    <style>
+      :root {
+        font-family: Inter, "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+        color: #172033;
+        background: #f3f6fb;
+        --navy: #0b1020;
+        --blue: #5268f7;
+        --mint: #22bfa0;
+        --line: #e5eaf2;
+        --muted: #6e7890;
+      }
+      * { box-sizing: border-box; }
+      html, body { width: 100%; height: 100%; margin: 0; }
+      body { overflow: hidden; }
+      button, a { font: inherit; }
+      .app { height: 100%; display: grid; grid-template-rows: 64px 1fr; }
+      .topbar {
+        position: relative; z-index: 20; display: flex; align-items: center; gap: 28px;
+        padding: 0 24px; color: #fff; background: var(--navy); border-bottom: 1px solid #ffffff14;
+        box-shadow: 0 8px 30px #10182e1a;
+      }
+      .brand { display: flex; align-items: center; gap: 11px; min-width: 206px; }
+      .brand-mark {
+        width: 36px; height: 36px; display: grid; place-items: center; border-radius: 11px;
+        font-size: 13px; font-weight: 850; letter-spacing: -.03em;
+        background: linear-gradient(135deg, #6a7cff, #30d6b5); box-shadow: 0 8px 24px #546af755;
+      }
+      .brand-copy strong { display: block; font-size: 15px; letter-spacing: .01em; }
+      .brand-copy span { display: block; margin-top: 2px; color: #8e9ab6; font-size: 10px; letter-spacing: .12em; }
+      .nav { align-self: stretch; display: flex; align-items: stretch; gap: 4px; }
+      .nav-btn {
+        position: relative; min-width: 104px; padding: 0 17px; border: 0; color: #9ca7bf;
+        background: transparent; cursor: pointer; transition: color .2s, background .2s;
+      }
+      .nav-btn:hover { color: #fff; background: #ffffff08; }
+      .nav-btn.active { color: #fff; }
+      .nav-btn.active::after {
+        content: ""; position: absolute; right: 17px; bottom: 0; left: 17px; height: 3px;
+        border-radius: 3px 3px 0 0; background: linear-gradient(90deg, #7182ff, #2bd0ae);
+      }
+      .top-actions { margin-left: auto; display: flex; align-items: center; gap: 12px; }
+      .status-pill {
+        display: flex; align-items: center; gap: 8px; padding: 8px 11px; border: 1px solid #ffffff14;
+        border-radius: 999px; color: #aeb8ce; background: #ffffff08; font-size: 12px;
+      }
+      .status-dot { width: 7px; height: 7px; border-radius: 50%; background: #7d879c; box-shadow: 0 0 0 4px #7d879c1f; }
+      .status-pill.ok .status-dot { background: #35d39f; box-shadow: 0 0 0 4px #35d39f1f; }
+      .status-pill.warn .status-dot { background: #f6b94a; box-shadow: 0 0 0 4px #f6b94a1f; }
+      .workspace { min-height: 0; position: relative; }
+      .view { position: absolute; inset: 0; display: none; }
+      .view.active { display: block; }
+      .module-frame { width: 100%; height: 100%; border: 0; background: #fff; }
+      .overview { overflow: auto; background: #f3f6fb; }
+      .overview-inner { width: min(1240px, calc(100% - 56px)); margin: 0 auto; padding: 38px 0 52px; }
+      .hero {
+        position: relative; overflow: hidden; display: grid; grid-template-columns: 1.4fr .8fr; gap: 34px;
+        min-height: 280px; padding: 42px; border-radius: 26px; color: #fff;
+        background: radial-gradient(circle at 88% 18%, #6678ff55, transparent 30%),
+                    radial-gradient(circle at 70% 100%, #21bea033, transparent 34%), #10172a;
+        box-shadow: 0 20px 55px #202d5026;
+      }
+      .hero::after {
+        content: ""; position: absolute; right: -100px; bottom: -170px; width: 440px; height: 440px;
+        border: 1px solid #ffffff12; border-radius: 50%; box-shadow: 0 0 0 48px #ffffff05, 0 0 0 96px #ffffff03;
+      }
+      .eyebrow { color: #8fa0ff; font-size: 11px; font-weight: 800; letter-spacing: .17em; }
+      h1 { max-width: 680px; margin: 16px 0 14px; font-size: clamp(32px, 4vw, 50px); line-height: 1.12; letter-spacing: -.045em; }
+      .hero-copy p { max-width: 650px; margin: 0; color: #aeb8cd; font-size: 15px; line-height: 1.8; }
+      .hero-actions { display: flex; gap: 12px; margin-top: 27px; }
+      .primary, .secondary, .module-link {
+        display: inline-flex; align-items: center; justify-content: center; gap: 8px; border: 0;
+        border-radius: 11px; cursor: pointer; text-decoration: none; transition: transform .2s, box-shadow .2s;
+      }
+      .primary { padding: 12px 17px; color: #11182b; background: #fff; font-weight: 760; box-shadow: 0 10px 24px #0003; }
+      .secondary { padding: 11px 16px; color: #d8deeb; background: #ffffff0a; border: 1px solid #ffffff1c; }
+      .primary:hover, .secondary:hover, .module-link:hover { transform: translateY(-1px); }
+      .hero-panel { position: relative; z-index: 1; display: grid; align-content: center; gap: 10px; }
+      .flow-step {
+        display: grid; grid-template-columns: 34px 1fr auto; align-items: center; gap: 12px;
+        padding: 13px 14px; border: 1px solid #ffffff12; border-radius: 13px; background: #ffffff08; backdrop-filter: blur(12px);
+      }
+      .flow-no { width: 28px; height: 28px; display: grid; place-items: center; border-radius: 9px; color: #91a1ff; background: #7182ff1c; font-size: 11px; font-weight: 800; }
+      .flow-step strong { font-size: 13px; } .flow-step span { color: #7f8ba5; font-size: 11px; }
+      .section-title { display: flex; align-items: end; justify-content: space-between; margin: 34px 2px 16px; }
+      .section-title h2 { margin: 0; font-size: 20px; letter-spacing: -.02em; }
+      .section-title p { margin: 0; color: var(--muted); font-size: 12px; }
+      .metrics { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
+      .metric { padding: 20px; border: 1px solid var(--line); border-radius: 17px; background: #fff; box-shadow: 0 8px 28px #22304f0a; }
+      .metric-head { display: flex; align-items: center; justify-content: space-between; color: var(--muted); font-size: 12px; }
+      .metric-value { margin-top: 13px; font-size: 27px; font-weight: 820; letter-spacing: -.04em; }
+      .metric-note { margin-top: 7px; color: #98a1b4; font-size: 11px; }
+      .mini-dot { width: 8px; height: 8px; border-radius: 50%; background: #c7cedb; }
+      .mini-dot.ok { background: #28c89c; } .mini-dot.warn { background: #f2b33c; }
+      .modules { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+      .module-card {
+        position: relative; overflow: hidden; min-height: 216px; padding: 27px; border: 1px solid var(--line);
+        border-radius: 20px; background: #fff; box-shadow: 0 10px 34px #22304f0c;
+      }
+      .module-card::after { content: ""; position: absolute; width: 170px; height: 170px; right: -65px; top: -72px; border-radius: 50%; background: #576ef70b; }
+      .module-kicker { color: #7c879e; font-size: 10px; font-weight: 800; letter-spacing: .14em; }
+      .module-card h3 { margin: 13px 0 9px; font-size: 23px; letter-spacing: -.03em; }
+      .module-card p { max-width: 520px; min-height: 48px; margin: 0; color: var(--muted); font-size: 13px; line-height: 1.7; }
+      .module-tags { display: flex; flex-wrap: wrap; gap: 7px; margin: 18px 0; }
+      .module-tags span { padding: 5px 8px; border-radius: 7px; color: #68738b; background: #f3f6fa; font-size: 10px; }
+      .module-link { padding: 9px 12px; color: #fff; background: var(--blue); font-size: 12px; font-weight: 720; box-shadow: 0 8px 20px #5268f72a; }
+      .module-card.evaluation .module-link { background: #16ad90; box-shadow: 0 8px 20px #16ad902a; }
+      @media (max-width: 900px) {
+        .brand-copy, .status-pill span { display: none; } .brand { min-width: auto; }
+        .topbar { gap: 10px; padding: 0 12px; } .nav-btn { min-width: 78px; padding: 0 9px; }
+        .hero { grid-template-columns: 1fr; } .hero-panel { display: none; }
+        .metrics { grid-template-columns: 1fr 1fr; } .modules { grid-template-columns: 1fr; }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="app">
+      <header class="topbar">
+        <div class="brand">
+          <div class="brand-mark">ER</div>
+          <div class="brand-copy"><strong>EvalRoute</strong><span>AI INFRASTRUCTURE</span></div>
+        </div>
+        <nav class="nav" aria-label="平台模块">
+          <button class="nav-btn active" data-view="overview">平台总览</button>
+          <button class="nav-btn" data-view="gateway">智能网关</button>
+          <button class="nav-btn" data-view="evaluation">模型评测</button>
+        </nav>
+        <div class="top-actions">
+          <div class="status-pill" id="global-status"><i class="status-dot"></i><span>正在检查服务</span></div>
+        </div>
+      </header>
+
+      <main class="workspace">
+        <section class="view overview active" id="view-overview">
+          <div class="overview-inner">
+            <section class="hero">
+              <div class="hero-copy">
+                <div class="eyebrow">EVALUATE · PROFILE · ROUTE · OBSERVE</div>
+                <h1>让模型评测真正参与<br />在线路由决策</h1>
+                <p>统一管理模型接入、质量评测、多目标路由与调用审计。评测结果形成能力画像，再反馈给网关持续优化模型选择。</p>
+                <div class="hero-actions">
+                  <button class="primary" data-open="evaluation">开始模型评测 <b>→</b></button>
+                  <button class="secondary" data-open="gateway">进入网关控制台</button>
+                </div>
+              </div>
+              <div class="hero-panel" aria-label="反馈闭环">
+                <div class="flow-step"><i class="flow-no">01</i><strong>基准评测</strong><span>Benchmark</span></div>
+                <div class="flow-step"><i class="flow-no">02</i><strong>能力画像</strong><span>Profile</span></div>
+                <div class="flow-step"><i class="flow-no">03</i><strong>自适应路由</strong><span>Route</span></div>
+                <div class="flow-step"><i class="flow-no">04</i><strong>反馈优化</strong><span>Feedback</span></div>
+              </div>
+            </section>
+
+            <div class="section-title"><h2>平台运行状态</h2><p>本机开发环境 · 实时检测</p></div>
+            <section class="metrics">
+              <article class="metric"><div class="metric-head"><span>网关服务</span><i class="mini-dot" id="gateway-dot"></i></div><div class="metric-value" id="gateway-state">检测中</div><div class="metric-note">FastAPI · 端口 8123</div></article>
+              <article class="metric"><div class="metric-head"><span>评测服务</span><i class="mini-dot" id="evaluation-dot"></i></div><div class="metric-value" id="evaluation-state">检测中</div><div class="metric-note">FastAPI · 端口 8124</div></article>
+              <article class="metric"><div class="metric-head"><span>网关模型</span><i class="mini-dot ok"></i></div><div class="metric-value" id="gateway-models">—</div><div class="metric-note">已接入模型目录</div></article>
+              <article class="metric"><div class="metric-head"><span>评测模型</span><i class="mini-dot" id="evaluation-model-dot"></i></div><div class="metric-value" id="evaluation-models">—</div><div class="metric-note" id="evaluation-model-note">等待读取模型目录</div></article>
+            </section>
+
+            <div class="section-title"><h2>核心工作台</h2><p>统一入口 · 独立服务边界</p></div>
+            <section class="modules">
+              <article class="module-card">
+                <div class="module-kicker">CONTROL PLANE / 01</div><h3>自适应 AI 网关</h3>
+                <p>集中管理提供商、模型、API Key、配额与路由策略，对外提供 OpenAI 兼容接口和完整调用审计。</p>
+                <div class="module-tags"><span>多模型接入</span><span>智能路由</span><span>故障降级</span><span>成本治理</span></div>
+                <button class="module-link" data-open="gateway">打开网关工作台 →</button>
+              </article>
+              <article class="module-card evaluation">
+                <div class="module-kicker">EVALUATION PLANE / 02</div><h3>大模型评测中心</h3>
+                <p>通过同一网关执行模型对比、批量测试、Prompt 实验与 AI Judge，并将能力画像反馈给在线路由。</p>
+                <div class="module-tags"><span>模型对比</span><span>批量评测</span><span>能力画像</span><span>数据分析</span></div>
+                <button class="module-link" data-open="evaluation">打开评测工作台 →</button>
+              </article>
+            </section>
+          </div>
+        </section>
+
+        <section class="view" id="view-gateway"><iframe class="module-frame" id="gateway-frame" title="EvalRoute 智能网关"></iframe></section>
+        <section class="view" id="view-evaluation"><iframe class="module-frame" id="evaluation-frame" title="EvalRoute 模型评测"></iframe></section>
+      </main>
+    </div>
+
+    <script>
+      const host = window.location.hostname || '127.0.0.1';
+      const gatewayUrl = `${window.location.protocol}//${host}:5173/`;
+      const evaluationUrl = `${window.location.protocol}//${host}:5174/`;
+      const views = ['overview', 'gateway', 'evaluation'];
+
+      function openView(name, updateHash = true) {
+        if (!views.includes(name)) name = 'overview';
+        document.querySelectorAll('.view').forEach(el => el.classList.toggle('active', el.id === `view-${name}`));
+        document.querySelectorAll('.nav-btn').forEach(el => el.classList.toggle('active', el.dataset.view === name));
+        if (name === 'gateway' && !document.querySelector('#gateway-frame').src) document.querySelector('#gateway-frame').src = gatewayUrl;
+        if (name === 'evaluation' && !document.querySelector('#evaluation-frame').src) document.querySelector('#evaluation-frame').src = evaluationUrl;
+        if (updateHash) history.replaceState(null, '', name === 'overview' ? '#overview' : `#${name}`);
+      }
+
+      document.querySelectorAll('[data-view]').forEach(el => el.addEventListener('click', () => openView(el.dataset.view)));
+      document.querySelectorAll('[data-open]').forEach(el => el.addEventListener('click', () => openView(el.dataset.open)));
+      window.addEventListener('hashchange', () => openView(location.hash.slice(1), false));
+      openView(location.hash.slice(1) || 'overview', false);
+
+      async function getJson(url, options) {
+        const response = await fetch(url, options);
+        if (!response.ok) throw new Error(String(response.status));
+        return response.json();
+      }
+
+      async function refreshStatus() {
+        const gatewayState = document.querySelector('#gateway-state');
+        const evaluationState = document.querySelector('#evaluation-state');
+        const gatewayDot = document.querySelector('#gateway-dot');
+        const evaluationDot = document.querySelector('#evaluation-dot');
+        const global = document.querySelector('#global-status');
+        let healthy = 0;
+
+        try {
+          await getJson(`http://${host}:8123/api/health/`);
+          gatewayState.textContent = '运行正常'; gatewayDot.classList.add('ok'); healthy++;
+        } catch { gatewayState.textContent = '连接失败'; gatewayDot.classList.add('warn'); }
+        try {
+          await getJson(`http://${host}:8124/api/health`);
+          evaluationState.textContent = '运行正常'; evaluationDot.classList.add('ok'); healthy++;
+        } catch { evaluationState.textContent = '连接失败'; evaluationDot.classList.add('warn'); }
+
+        try {
+          const data = await getJson(`http://${host}:8123/api/model/list/active`);
+          document.querySelector('#gateway-models').textContent = Array.isArray(data.data) ? data.data.length : '—';
+        } catch { document.querySelector('#gateway-models').textContent = '—'; }
+        try {
+          const data = await getJson(`http://${host}:8124/api/model/list`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}'
+          });
+          const count = Number(data?.data?.total || 0);
+          document.querySelector('#evaluation-models').textContent = count;
+          const dot = document.querySelector('#evaluation-model-dot');
+          const note = document.querySelector('#evaluation-model-note');
+          dot.classList.add(count > 0 ? 'ok' : 'warn');
+          note.textContent = count > 0 ? '模型目录已同步' : '需要从网关同步模型';
+        } catch { document.querySelector('#evaluation-models').textContent = '—'; }
+
+        global.classList.remove('ok', 'warn');
+        global.classList.add(healthy === 2 ? 'ok' : 'warn');
+        global.querySelector('span').textContent = healthy === 2 ? '核心服务运行正常' : `${healthy}/2 服务在线`;
+      }
+      refreshStatus();
+      setInterval(refreshStatus, 30000);
+    </script>
+  </body>
+</html>

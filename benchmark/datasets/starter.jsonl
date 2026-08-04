@@ -1,0 +1,6 @@
+{"id":"sum-001","task_type":"summarization","prompt":"将以下客服记录压缩为三条行动项：客户无法登录，重置密码邮件未收到，账号绑定了旧手机号。","reference":"检查邮件投递；验证身份；更新手机号并重置密码。","metadata":{"language":"zh-CN","difficulty":"easy"}}
+{"id":"cls-001","task_type":"classification","prompt":"将工单分类为 billing、technical 或 account：扣款成功但余额未到账。","reference":"billing","metadata":{"language":"zh-CN","difficulty":"easy"}}
+{"id":"ext-001","task_type":"extraction","prompt":"从文本提取公司、金额和日期：北辰科技于2026年3月12日支付人民币18,500元。","reference":{"company":"北辰科技","amount":18500,"currency":"CNY","date":"2026-03-12"},"metadata":{"language":"zh-CN","difficulty":"easy"}}
+{"id":"math-001","task_type":"math","prompt":"某服务每百万输入 Token 2 元、输出 Token 8 元。本次输入25万、输出5万 Token，成本多少元？","reference":"0.9","metadata":{"language":"zh-CN","difficulty":"easy"}}
+{"id":"code-001","task_type":"code","prompt":"写一个 Python 函数，将列表按元素首次出现顺序去重，并说明时间复杂度。","reference":"使用 set 记录已见元素，单次遍历，平均 O(n)。","metadata":{"language":"zh-CN","difficulty":"easy"}}
+{"id":"qa-001","task_type":"qa","prompt":"为什么模型评测请求应显式指定模型，而在线请求可以使用自动路由？","reference":"评测需要控制变量和可复现；在线请求优化综合目标。","metadata":{"language":"zh-CN","difficulty":"medium"}}

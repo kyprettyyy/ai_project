@@ -1,0 +1,52 @@
+name: evalroute
+
+# Local development uses Docker only for infrastructure.
+# Python and Node services run directly on the host.
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: evalroute-mysql
+    command:
+      - --default-authentication-plugin=mysql_native_password
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?Set MYSQL_ROOT_PASSWORD in .env}
+      GATEWAY_DB_PASSWORD: ${GATEWAY_DB_PASSWORD:?Set GATEWAY_DB_PASSWORD in .env}
+      EVALUATION_DB_PASSWORD: ${EVALUATION_DB_PASSWORD:?Set EVALUATION_DB_PASSWORD in .env}
+      TZ: Asia/Shanghai
+    ports:
+      - "${MYSQL_HOST_PORT:-3308}:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+      - ./infrastructure/mysql/00-databases-and-users.sh:/docker-entrypoint-initdb.d/00-databases-and-users.sh:ro
+      - ./infrastructure/mysql/01-gateway-schema.sql:/docker-entrypoint-initdb.d/01-gateway-schema.sql:ro
+      - ./infrastructure/mysql/02-evaluation-schema.sql:/docker-entrypoint-initdb.d/02-evaluation-schema.sql:ro
+      - ./infrastructure/mysql/03-platform-integration.sql:/docker-entrypoint-initdb.d/03-platform-integration.sql:ro
+      - ./infrastructure/mysql/04-evaluation-starter.sql:/docker-entrypoint-initdb.d/04-evaluation-starter.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -uroot -p$${MYSQL_ROOT_PASSWORD} --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+      start_period: 30s
+    restart: unless-stopped
+
+  redis:
+    image: redis:7
+    container_name: evalroute-redis
+    command: redis-server --appendonly yes
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+volumes:
+  mysql-data:
+  redis-data:

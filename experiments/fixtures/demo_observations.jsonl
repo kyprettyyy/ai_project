@@ -1,0 +1,12 @@
+{"request":"r1","task":"summarization","model":"model-a","quality":0.84,"latency_ms":820,"cost":0.012,"success":1}
+{"request":"r1","task":"summarization","model":"model-b","quality":0.78,"latency_ms":410,"cost":0.005,"success":1}
+{"request":"r1","task":"summarization","model":"model-c","quality":0.70,"latency_ms":260,"cost":0.002,"success":1}
+{"request":"r2","task":"code","model":"model-a","quality":0.76,"latency_ms":910,"cost":0.014,"success":1}
+{"request":"r2","task":"code","model":"model-b","quality":0.86,"latency_ms":560,"cost":0.007,"success":1}
+{"request":"r2","task":"code","model":"model-c","quality":0.64,"latency_ms":300,"cost":0.003,"success":1}
+{"request":"r3","task":"classification","model":"model-a","quality":0.90,"latency_ms":650,"cost":0.009,"success":1}
+{"request":"r3","task":"classification","model":"model-b","quality":0.88,"latency_ms":380,"cost":0.004,"success":1}
+{"request":"r3","task":"classification","model":"model-c","quality":0.82,"latency_ms":210,"cost":0.001,"success":1}
+{"request":"r4","task":"math","model":"model-a","quality":0.88,"latency_ms":870,"cost":0.013,"success":1}
+{"request":"r4","task":"math","model":"model-b","quality":0.79,"latency_ms":500,"cost":0.006,"success":1}
+{"request":"r4","task":"math","model":"model-c","quality":0.68,"latency_ms":290,"cost":0.002,"success":0}

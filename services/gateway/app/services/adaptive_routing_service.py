@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from decimal import Decimal
 
 from sqlalchemy import select
@@ -74,6 +75,11 @@ class AdaptiveRoutingService:
                 sample_count=profile.sample_count if profile else 0,
                 profile_version=profile.profile_version if profile else 0,
                 profile_task_type=profile.task_type if profile else None,
+                profile_age_days=(
+                    max(0.0, (datetime.utcnow() - profile.evaluated_at).total_seconds() / 86400)
+                    if profile and profile.evaluated_at
+                    else 0.0
+                ),
             ))
 
         self.last_plan = self.engine.rank(signals, routing_context, weights)

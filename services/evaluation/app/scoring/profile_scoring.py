@@ -81,6 +81,9 @@ def build_profiles(
     observations: list[dict],
     evaluation_run_id: str,
     evaluated_at: datetime | None = None,
+    *,
+    latency_reference_ms: float = 1000.0,
+    cost_reference: float = 0.01,
 ) -> list[dict]:
     groups: dict[tuple[str, str], list[dict]] = defaultdict(list)
     for row in observations:
@@ -107,17 +110,22 @@ def build_profiles(
             "reliability": len(successes) / len(items),
         })
 
-    max_latency = max((row["latency"] for row in aggregates), default=1.0) or 1.0
-    max_cost = max((row["cost"] for row in aggregates), default=0.000001) or 0.000001
     timestamp = (evaluated_at or datetime.utcnow()).isoformat()
     return [{
         "model": row["model"],
         "task_type": row["task_type"],
         "quality_score": round(float(row["quality"]), 4),
-        "latency_score": round(max(0.0, 1.0 - float(row["latency"]) / max_latency), 4),
-        "cost_score": round(max(0.0, 1.0 - float(row["cost"]) / max_cost), 4),
+        "latency_score": round(inverse_reference_score(row["latency"], latency_reference_ms), 4),
+        "cost_score": round(inverse_reference_score(row["cost"], cost_reference), 4),
         "reliability_score": round(float(row["reliability"]), 4),
         "sample_count": int(row["sample_count"]),
         "evaluation_run_id": evaluation_run_id,
         "evaluated_at": timestamp,
     } for row in aggregates]
+
+
+def inverse_reference_score(value: float, reference: float) -> float:
+    """Return a stable higher-is-better score using a fixed positive reference."""
+    safe_value = max(0.0, float(value))
+    safe_reference = max(0.000001, float(reference))
+    return 1.0 / (1.0 + safe_value / safe_reference)

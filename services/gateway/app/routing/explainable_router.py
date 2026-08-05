@@ -8,6 +8,7 @@ unit tests and offline evaluation jobs.
 from __future__ import annotations
 
 import json
+import math
 from dataclasses import asdict, dataclass, field
 from decimal import Decimal
 from typing import Iterable
@@ -36,6 +37,10 @@ class RoutingContext:
     min_success_rate: float | None = None
     required_capabilities: set[str] = field(default_factory=set)
     minimum_profile_samples: int = 20
+    latency_reference_ms: int = 1000
+    cost_reference: Decimal = Decimal("0.01")
+    profile_half_life_days: float = 30.0
+    quality_uncertainty_penalty: float = 0.05
 
     @property
     def required_tokens(self) -> int:
@@ -64,6 +69,10 @@ class RoutingContext:
             "minSuccessRate": self.min_success_rate,
             "requiredCapabilities": sorted(self.required_capabilities),
             "minimumProfileSamples": self.minimum_profile_samples,
+            "latencyReferenceMs": self.latency_reference_ms,
+            "costReference": float(self.cost_reference),
+            "profileHalfLifeDays": self.profile_half_life_days,
+            "qualityUncertaintyPenalty": self.quality_uncertainty_penalty,
         }
 
 
@@ -85,6 +94,7 @@ class CandidateSignals:
     sample_count: int = 0
     profile_version: int = 0
     profile_task_type: str | None = None
+    profile_age_days: float = 0.0
 
     def estimate_cost(self, context: RoutingContext) -> Decimal:
         input_cost = self.input_price * Decimal(context.estimated_input_tokens) / Decimal("1000")
@@ -160,17 +170,26 @@ class ExplainableRouter:
             return RoutingPlan(context=context, weights=normalized_weights, candidates=[])
 
         estimates = {item.model_id: item.estimate_cost(context) for item in items}
-        max_cost = max(estimates.values(), default=Decimal("0")) or Decimal("0.000001")
-        max_latency = max((max(0, item.avg_latency_ms) for item in items), default=1) or 1
         decisions: list[CandidateDecision] = []
 
         for item in items:
             estimated_cost = estimates[item.model_id]
-            confidence = min(1.0, item.sample_count / max(1, context.minimum_profile_samples))
+            sample_confidence = min(1.0, max(0, item.sample_count) / max(1, context.minimum_profile_samples))
+            age = max(0.0, float(item.profile_age_days))
+            half_life = max(0.000001, float(context.profile_half_life_days))
+            freshness = math.exp2(-age / half_life)
+            confidence = sample_confidence * freshness
             quality = _blend(item.quality_score, 0.5, confidence)
-            live_latency_score = max(0.0, 1.0 - max(0, item.avg_latency_ms) / max_latency)
+            quality = _clamp01(
+                quality - max(0.0, context.quality_uncertainty_penalty) * (1.0 - confidence)
+            )
+            live_latency_score = _inverse_score(
+                max(0, item.avg_latency_ms), max(1, context.latency_reference_ms)
+            )
             latency = _blend(item.profile_latency_score, live_latency_score, confidence)
-            live_cost_score = max(0.0, 1.0 - float(estimated_cost / max_cost))
+            live_cost_score = _inverse_score(
+                float(estimated_cost), max(0.000001, float(context.cost_reference))
+            )
             cost = _blend(item.profile_cost_score, live_cost_score, confidence)
             live_reliability = _clamp01(item.live_success_rate)
             reliability = _blend(item.profile_reliability_score, live_reliability, confidence)
@@ -178,7 +197,7 @@ class ExplainableRouter:
             required_tokens = max(1, context.required_tokens)
             context_score = _clamp01(item.context_length / (required_tokens * 4))
             limit = context.effective_cost_limit
-            budget = _clamp01(1.0 - float(estimated_cost / limit)) if limit else cost
+            budget = _clamp01(1.0 - float(estimated_cost / limit)) if limit and limit > 0 else 0.5
             scores = {
                 "quality": quality,
                 "latency": latency,
@@ -290,7 +309,10 @@ def normalize_weights(overrides: dict[str, float] | None) -> dict[str, float]:
     if not overrides:
         return dict(DEFAULT_WEIGHTS)
     values = {**DEFAULT_WEIGHTS, **(overrides or {})}
-    values = {key: max(0.0, float(values.get(key, 0.0))) for key in DEFAULT_WEIGHTS}
+    values = {
+        key: _finite_non_negative(values.get(key, 0.0))
+        for key in DEFAULT_WEIGHTS
+    }
     total = sum(values.values())
     if total <= 0:
         return dict(DEFAULT_WEIGHTS)
@@ -325,6 +347,25 @@ def _blend(profile_value: float, live_or_prior_value: float, confidence: float) 
 
 def _clamp01(value: float) -> float:
     return max(0.0, min(1.0, float(value)))
+
+
+def _inverse_score(value: float, reference: float) -> float:
+    """Map a non-negative measurement to (0, 1] using a fixed reference.
+
+    Unlike candidate-relative min-max scaling, this score does not change when an
+    unrelated model is added to or removed from the candidate set.
+    """
+    safe_value = max(0.0, float(value))
+    safe_reference = max(0.000001, float(reference))
+    return 1.0 / (1.0 + safe_value / safe_reference)
+
+
+def _finite_non_negative(value: object) -> float:
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return 0.0
+    return max(0.0, number) if math.isfinite(number) else 0.0
 
 
 def _decimal_or_none(value: Decimal | None) -> float | None:

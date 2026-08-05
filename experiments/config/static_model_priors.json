@@ -1,0 +1,23 @@
+{
+  "model-a": {
+    "quality_prior": 0.9,
+    "latency_prior": 0.55,
+    "cost_prior": 0.35,
+    "reliability_prior": 0.98,
+    "priority": 100
+  },
+  "model-b": {
+    "quality_prior": 0.8,
+    "latency_prior": 0.72,
+    "cost_prior": 0.65,
+    "reliability_prior": 0.97,
+    "priority": 100
+  },
+  "model-c": {
+    "quality_prior": 0.68,
+    "latency_prior": 0.86,
+    "cost_prior": 0.9,
+    "reliability_prior": 0.75,
+    "priority": 100
+  }
+}

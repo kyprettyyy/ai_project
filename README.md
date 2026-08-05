@@ -58,7 +58,7 @@ Copy-Item services/gateway/.env.example services/gateway/.env
 Copy-Item services/evaluation/.env.example services/evaluation/.env
 ```
 
-这些 `.env` 文件已被 Git 忽略，不应提交。仓库不包含默认密码、API Key 或生产数据库配置。
+
 
 首次安装依赖：
 

@@ -1,116 +1,121 @@
-# EvalRoute：评测驱动的自适应大模型网关
+# EvalRoute: Evaluation-Guided Multi-Objective LLM Routing
 
-EvalRoute 是一个 Python-only 的企业级 LLM 基础设施项目。它把模型网关与模型评测平台连接成反馈闭环：评测服务统一通过网关调用模型，评测结果生成模型能力画像，网关再根据任务类型，在质量、延迟、成本和可靠性之间进行多目标路由。
+EvalRoute is a research prototype for one question:
+
+> Can evaluation feedback improve LLM selection under quality, latency, cost, and reliability constraints?
+
+The project turns model evaluation results into versioned capability profiles, applies hard request constraints, and ranks eligible models with an explainable multi-objective score. The research core is Python and runs without a database, API key, GPU, or third-party package.
+
+> **Evidence boundary:** the checked-in results use a 12-row synthetic fixture. They verify the experiment pipeline but are **not** evidence that EvalRoute outperforms a baseline on real models. See [Results](docs/RESULTS.md) and [Provenance](docs/PROVENANCE.md).
+
+## My Contributions
+
+I designed and implemented:
+
+- the multi-objective LLM routing formulation;
+- hard constraint filtering before candidate ranking;
+- stable reference-based cost and latency scoring;
+- capability-profile feedback with sample confidence and freshness adjustment;
+- deterministic selection, fallback ordering, and candidate-level explanations;
+- eight routing baselines, weight sensitivity, signal ablations, failure/drift experiments, Pareto analysis, and repeated-trial uncertainty summaries;
+- 40 focused checks covering routing edge cases, evaluation aggregation, experiment metrics, and the profile-to-routing feedback loop;
+- the reproducibility protocol, empirical-data leakage guardrails, and evaluation methodology.
+
+The core implementation is concentrated in `services/gateway/app/routing/explainable_router.py`, `services/evaluation/app/scoring/profile_scoring.py`, `experiments/routing_experiments.py`, and `tests/`. Legacy platform features and migrated frontend applications are identified in [Provenance](docs/PROVENANCE.md) and are not claimed as original research work.
 
 ```mermaid
 flowchart LR
-  U["应用请求"] --> G["Adaptive Gateway"]
-  G --> P["模型提供商"]
-  G --> D["路由决策与调用日志"]
-  B["Benchmark Dataset"] --> E["Evaluation Service"]
-  E -->|"固定模型调用"| G
-  E --> R["规则 / 用户评分 / AI Judge"]
-  R --> C["Capability Profiles"]
-  C -->|"内部反馈 API"| G
+  D["Versioned evaluation observations"] --> P["Capability profiles"]
+  R["Request + constraints"] --> F["Hard-constraint filter"]
+  P --> F
+  F --> S["Stable multi-objective scoring"]
+  S --> X["Selection + explanation"]
+  X --> O["Observed quality / latency / cost / success"]
+  O --> D
 ```
 
-## 已实现能力
+## Project status
 
-- OpenAI 兼容的 `/api/v1/chat/completions` 与 `/api/v1/models`。
-- 固定、成本优先、延迟优先和评测驱动的自适应路由。
-- 任务感知的多目标评分：质量、延迟、成本、可靠性，可由请求覆盖权重。
-- 模型能力画像版本、评测运行 ID、候选快照、降级顺序和端到端 Trace。
-- 批量评测、Side-by-Side、Prompt Lab、用户评分、AI Judge 与报告。
-- 评测结果聚合并回写网关画像的闭环接口。
-- 单个 MySQL 容器中的两个独立数据库和账号；单个 Redis 通过键前缀隔离。
-- Python SDK：`evalroute_sdk`。
-- 五组可复现实验的运行脚本、基准数据集与 Dataset Card。
+| Stage | Scope |
+|---|---|
+| Implemented | Dependency-free router, offline policy evaluation, audit explanations, synthetic reproducibility suite, and focused tests |
+| Experimental | FastAPI profile feedback, AI-as-a-judge signal, database-backed decision/outcome audit, and provider fallback |
+| Planned | A licensed 200–500 example multilingual benchmark, 3–5 real models, blinded human audit, held-out weight selection, bootstrap intervals, and learned policies |
 
-## 仓库结构
+## 30-second reproduction
+
+Python 3.10+ is sufficient:
+
+```powershell
+python experiments/run_experiments.py
+python -m unittest discover -s tests/gateway -p test_routing.py -v
+python -m unittest discover -s tests/experiments -v
+```
+
+On Windows, the complete dependency-free research verification is:
+
+```powershell
+.\scripts\verify-research.ps1
+```
+
+Generated evidence is written to `experiments/results/demo-results.json` and `experiments/results/demo-results.md`.
+
+To evaluate a real exported observation file:
+
+```powershell
+python experiments/run_experiments.py `
+  --input path/to/observations.jsonl `
+  --output-dir experiments/results/empirical `
+  --evidence-level empirical `
+  --repeats 30
+```
+
+Each JSONL row must identify a request/task/model and include held-out `quality`, `latency_ms`, `cost`, and `success`. Runs labelled `empirical` must also provide precomputed `profile_quality`, `profile_reliability`, and `profile_sample_count`; the CLI rejects empirical labels without them to reduce held-out outcome leakage. The report records the input SHA-256 hash. The collection protocol and required provenance are documented in [Methodology](docs/METHODOLOGY.md) and the [Dataset Card](benchmark/DATASET_CARD.md).
+
+## Synthetic smoke-test output
+
+These values are included only so a reviewer can confirm what the command should produce:
+
+| Policy | Quality | Mean latency | Mean cost | Success | Constraint violations |
+|---|---:|---:|---:|---:|---:|
+| Fixed strongest | 0.8450 | 812.50 ms | 0.012000 | 1.0000 | 0.7500 |
+| Fixed cheapest | 0.7100 | 265.00 ms | 0.002000 | 0.7500 | 0.0000 |
+| Static weighted | 0.7925 | 382.50 ms | 0.004000 | 1.0000 | 0.0000 |
+| EvalRoute feedback | 0.7925 | 382.50 ms | 0.004000 | 1.0000 | 0.0000 |
+
+On this tiny fixture, feedback routing ties static weighted routing. This is a useful negative result: the fixture validates mechanics, not research superiority.
+
+## Repository map
 
 ```text
-services/gateway/       FastAPI 网关、路由、计费、审计
-services/evaluation/    FastAPI 评测、批量任务、能力画像反馈
-web/gateway/            网关控制台（Vue + Vite）
-web/evaluation/         评测工作台（Vue + Vite）
-sdk/python/             EvalRoute Python SDK
-benchmark/              数据集与 Dataset Card
-experiments/            五组实验与结果输出目录
-infrastructure/         MySQL 初始化与 Nginx 配置
-docs/                   架构、方法、限制、英文技术报告
+benchmark/              Dataset schema, starter data, and Dataset Card
+experiments/            Offline policies, ablations, drift tests, and reports
+tests/                  Focused routing, evaluation, experiment, and feedback tests
+services/gateway/       Integrated FastAPI gateway; research router lives here
+services/evaluation/    Integrated evaluation service; profile scoring lives here
+docs/                   Architecture, method, results, provenance, and report
+sdk/python/             Optional client SDK
 ```
 
-## 本机开发环境
+## Full integrated prototype
 
-项目采用以下运行方式：
-
-- Docker：只运行 MySQL 8 和 Redis 7。
-- 本机 Python：运行 Gateway 和 Evaluation 两个 FastAPI 服务，各自使用独立虚拟环境。
-- 本机 Node.js：运行两个 Vue/Vite 前端。
-
-环境要求：Python 3.10+、Node.js 22+、Docker Desktop，以及 PowerShell 7（推荐）。
-
-首次运行前复制环境变量模板，并为所有密码、Token 与 Secret 项填写本机专用的随机值：
+The optional two-service prototype requires Python 3.10+, Node.js 22+, Docker Desktop, MySQL, and Redis:
 
 ```powershell
 Copy-Item .env.example .env
 Copy-Item services/gateway/.env.example services/gateway/.env
 Copy-Item services/evaluation/.env.example services/evaluation/.env
-```
-
-
-
-首次安装依赖：
-
-```powershell
 .\scripts\setup-local.ps1
-```
-
-如需真实模型调用，在 `services/gateway/.env` 中填写 `AI_API_KEY`。如果该文件尚不存在，启动脚本会从 `.env.example` 自动创建。
-
-启动全部服务：
-
-```powershell
 .\scripts\start.ps1
 ```
 
-停止全部服务：
+Use test-only credentials and never commit `.env` files. Run the broader local checks with `.\scripts\verify.ps1`. This integrated path has not completed production security, load, recovery, or provider-compatibility validation.
 
-```powershell
-.\scripts\stop.ps1
-```
+## Documentation
 
-本机地址：
-
-| 服务 | 地址 | 运行位置 |
-|---|---|---|
-| **统一平台入口** | **`http://localhost:5172/`** | 本机 Python 静态服务 |
-| 网关工作台（子模块） | `http://localhost:5173/` | 本机 Node.js |
-| 评测工作台（子模块） | `http://localhost:5174/` | 本机 Node.js |
-| 网关 API | `http://localhost:8123/api` | 本机 Python |
-| 网关 Swagger | `http://localhost:8123/docs` | 本机 Python |
-| 评测 API | `http://localhost:8124/api` | 本机 Python |
-| 评测 Swagger | `http://localhost:8124/api/docs` | 本机 Python |
-| MySQL | `localhost:3308` | Docker |
-| Redis | `localhost:6379` | Docker |
-
-仓库不会初始化带有固定密码的默认账号。请在本地通过注册/管理流程创建账号，并为内部服务配置独立凭据。
-
-## 关键闭环
-
-网关请求不传 `model` 时走自适应路由：
-
-```json
-{
-  "messages": [{"role": "user", "content": "总结这段客服记录"}],
-  "task_type": "summarization",
-  "routing_weights": {
-    "quality": 0.5,
-    "latency": 0.2,
-    "cost": 0.15,
-    "reliability": 0.15
-  }
-}
-```
-
-指定 `model` 时为固定模型调用，适合可复现评测。评测完成后调用 `POST /api/model-profiles/rebuild` 聚合结果，并将新的能力画像发布给网关。
+- [Core algorithm](docs/CORE_MODULE.md)
+- [Architecture](docs/ARCHITECTURE.md)
+- [Evaluation methodology](docs/METHODOLOGY.md)
+- [Results and interpretation](docs/RESULTS.md)
+- [Technical report](docs/TECHNICAL_REPORT.md)
+- [Provenance and licensing](docs/PROVENANCE.md)

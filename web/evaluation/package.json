@@ -1,12 +1,12 @@
 {
-  "name": "frontend",
-  "version": "0.0.1",
+  "name": "@evalroute/evaluation-workbench",
+  "version": "0.1.0",
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "pure-build": "vite build",
-    "build": "run-p type-check \"build-only {@}\" --",
+    "build": "vite build",
+    "build:strict": "run-p type-check \"build-only {@}\" --",
     "openapi2ts": "openapi2ts",
     "preview": "vite preview",
     "build-only": "vite build",

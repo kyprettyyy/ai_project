@@ -14,6 +14,19 @@ class ChatMessage(CamelBaseModel):
     content: str
 
 
+class RoutingConstraints(CamelBaseModel):
+    """Hard limits used before the adaptive weighted ranking stage."""
+
+    max_request_cost: float | None = Field(default=None, alias="maxRequestCost", ge=0)
+    min_quality: float | None = Field(default=None, alias="minQuality", ge=0, le=1)
+    max_latency_ms: int | None = Field(default=None, alias="maxLatencyMs", ge=1)
+    min_success_rate: float | None = Field(default=None, alias="minSuccessRate", ge=0, le=1)
+    estimated_input_tokens: int | None = Field(default=None, alias="estimatedInputTokens", ge=0)
+    expected_output_tokens: int = Field(default=1024, alias="expectedOutputTokens", ge=1)
+    required_capabilities: list[str] = Field(default_factory=list, alias="requiredCapabilities")
+    minimum_profile_samples: int = Field(default=20, alias="minimumProfileSamples", ge=1, le=10000)
+
+
 class ChatRequest(CamelBaseModel):
     model: str | None = None
     messages: list[ChatMessage]
@@ -48,6 +61,11 @@ class ChatRequest(CamelBaseModel):
         default=None,
         alias="routing_weights",
         validation_alias=AliasChoices("routing_weights", "routingWeights"),
+    )
+    routing_constraints: RoutingConstraints | None = Field(
+        default=None,
+        alias="routing_constraints",
+        validation_alias=AliasChoices("routing_constraints", "routingConstraints"),
     )
     plugin_key: str | None = Field(
         default=None,
@@ -99,6 +117,8 @@ class GatewayMetadata(CamelBaseModel):
     cost: float = 0.0
     fallback: bool = False
     routing_score: float | None = Field(default=None, alias="routingScore")
+    routing_explanation: str | None = Field(default=None, alias="routingExplanation")
+    estimated_cost: float | None = Field(default=None, alias="estimatedCost")
 
 
 class OpenAiMessage(CamelBaseModel):

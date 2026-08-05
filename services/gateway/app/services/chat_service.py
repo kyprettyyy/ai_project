@@ -36,6 +36,7 @@ from app.services.routing_service import RoutingService
 from app.services.user_service import UserService
 from app.services.plugin_service import PluginService
 from app.services.user_provider_key_service import UserProviderKeyService
+from app.routing.explainable_router import RoutingContext, estimate_message_tokens
 
 logger = logging.getLogger("app")
 
@@ -70,12 +71,14 @@ class ChatService:
         if user_id and await self.user_service.is_user_disabled(user_id):
             raise BusinessException(ErrorCode.FORBIDDEN_ERROR, "账号已被禁用，无法使用服务")
         strategy_type = self._determine_strategy_type(chat_request.routing_strategy, chat_request.model)
+        routing_context = await self._build_routing_context(chat_request, user_id)
         selected_model = await self.routing_service.select_model(
             strategy_type, MODEL_TYPE_CHAT, requested_model,
             task_type=chat_request.task_type or "general",
             weights=chat_request.routing_weights,
             trace_id=trace_id,
             evaluation_run_id=chat_request.evaluation_run_id,
+            context=routing_context,
         )
         if selected_model is None:
             raise BusinessException(ErrorCode.PARAMS_ERROR, "没有可用的模型")
@@ -121,6 +124,7 @@ class ChatService:
             strategy_type, MODEL_TYPE_CHAT, requested_model,
             task_type=chat_request.task_type or "general",
             weights=chat_request.routing_weights,
+            context=routing_context,
         )
         try:
             return await self._invoke_with_fallback(
@@ -178,12 +182,14 @@ class ChatService:
                 chat_request = await self._inject_plugin_context(chat_request, user_id)
             if user_id and await self.user_service.is_user_disabled(user_id):
                 raise BusinessException(ErrorCode.FORBIDDEN_ERROR, "账号已被禁用，无法使用服务")
+            routing_context = await self._build_routing_context(chat_request, user_id)
             model = await self.routing_service.select_model(
                 strategy_type, MODEL_TYPE_CHAT, requested_model,
                 task_type=chat_request.task_type or "general",
                 weights=chat_request.routing_weights,
                 trace_id=trace_id,
                 evaluation_run_id=chat_request.evaluation_run_id,
+                context=routing_context,
             )
             if model is None:
                 raise BusinessException(ErrorCode.PARAMS_ERROR, "没有可用的模型")
@@ -262,6 +268,9 @@ class ChatService:
                 ],
             )
             yield f"data: {finish_response.model_dump_json(by_alias=True)}\n\n"
+            stream_cost = BillingService.calculate_cost_from_model(
+                model, prompt_tokens, completion_tokens
+            )
             request_log = await self.request_log_service.log_request(
                 trace_id=trace_id,
                 user_id=user_id,
@@ -280,10 +289,14 @@ class ChatService:
                 source="api" if api_key_id else "web",
                 client_ip=client_ip,
                 user_agent=user_agent,
+                cost=stream_cost,
+                evaluation_run_id=chat_request.evaluation_run_id,
+                task_type=chat_request.task_type or "general",
+                provider_name=provider.provider_name,
             )
             if user_id and prompt_tokens + completion_tokens > 0 and not is_byok:
                 await self.quota_service.deduct_tokens(user_id, prompt_tokens + completion_tokens)
-                cost = BillingService.calculate_cost_from_model(model, prompt_tokens, completion_tokens)
+                cost = stream_cost
                 if cost > Decimal("0"):
                     description = (
                         f"API调用消费（流式） - {model.model_key}"
@@ -454,6 +467,8 @@ class ChatService:
                 cost=float(request_cost),
                 fallback=is_fallback,
                 routingScore=self.routing_service.selected_score,
+                routingExplanation=self.routing_service.selected_explanation,
+                estimatedCost=self.routing_service.selected_estimated_cost,
             )
             return response
         except Exception as exc:
@@ -486,6 +501,41 @@ class ChatService:
         if requested_model:
             return ROUTING_STRATEGY_FIXED
         return ROUTING_STRATEGY_ADAPTIVE
+
+    async def _build_routing_context(self, chat_request: ChatRequest, user_id: int) -> RoutingContext:
+        constraints = chat_request.routing_constraints
+        estimated_input_tokens = (
+            constraints.estimated_input_tokens
+            if constraints and constraints.estimated_input_tokens is not None
+            else estimate_message_tokens(message.content for message in chat_request.messages)
+        )
+        expected_output_tokens = (
+            constraints.expected_output_tokens
+            if constraints
+            else (chat_request.max_tokens or 1024)
+        )
+        balance = await self.balance_service.get_user_balance(user_id) if user_id else None
+        budget_remaining = balance if balance is not None and balance > Decimal("0") else None
+        return RoutingContext(
+            task_type=chat_request.task_type or "general",
+            estimated_input_tokens=estimated_input_tokens,
+            expected_output_tokens=expected_output_tokens,
+            max_request_cost=(
+                Decimal(str(constraints.max_request_cost))
+                if constraints and constraints.max_request_cost is not None
+                else None
+            ),
+            budget_remaining=budget_remaining,
+            min_quality=constraints.min_quality if constraints else None,
+            max_latency_ms=constraints.max_latency_ms if constraints else None,
+            min_success_rate=constraints.min_success_rate if constraints else None,
+            required_capabilities={
+                item.strip().lower()
+                for item in (constraints.required_capabilities if constraints else [])
+                if item.strip()
+            },
+            minimum_profile_samples=constraints.minimum_profile_samples if constraints else 20,
+        )
 
     async def _inject_plugin_context(self, chat_request: ChatRequest, user_id: int) -> ChatRequest:
         plugin_key = chat_request.plugin_key

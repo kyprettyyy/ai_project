@@ -25,6 +25,6 @@ class RoutingDecision(Base):
     cost_weight: Mapped[Decimal] = mapped_column("costWeight", Numeric(6, 4), nullable=False)
     reliability_weight: Mapped[Decimal] = mapped_column("reliabilityWeight", Numeric(6, 4), nullable=False)
     final_score: Mapped[Decimal | None] = mapped_column("finalScore", Numeric(10, 6), nullable=True)
-    candidate_snapshot: Mapped[list | None] = mapped_column("candidateSnapshot", JSON, nullable=True)
+    candidate_snapshot: Mapped[list | dict | None] = mapped_column("candidateSnapshot", JSON, nullable=True)
     fallback_order: Mapped[list | None] = mapped_column("fallbackOrder", JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column("createdAt", DateTime, nullable=False, server_default=func.current_timestamp())

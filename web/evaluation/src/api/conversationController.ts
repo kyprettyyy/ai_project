@@ -1,5 +1,5 @@
-// 对话控制器 - 导出duihuajiekou并添加类型定义
-export * from './duihuajiekou'
+// 对话控制器：导出生成的端点并补充前端流式响应类型。
+export * from './conversationEndpoints'
 
 /**
  * 代码块接口

@@ -1,0 +1,19 @@
+EvalRoute repository licensing notice
+
+No repository-wide open-source license is granted at this time.
+
+The repository contains code migrated or adapted from third-party projects whose
+license status and required notices have not been fully verified. Copyright in
+those portions remains with the respective upstream authors. See NOTICE and
+docs/PROVENANCE.md for the known sources and affected paths.
+
+Except where a file or directory contains an explicit license notice from the
+relevant copyright holder, no permission is granted to use, copy, modify,
+publish, distribute, sublicense, or sell the contents of this repository.
+
+Dependency licenses are not changed by this notice. Installed packages and
+vendored third-party assets remain governed by their own licenses.
+
+Before publishing or redistributing this repository, obtain the missing upstream
+permissions or replace the affected code, then adopt an appropriate project
+license with the consent of the owners of the original contributions.

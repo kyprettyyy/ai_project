@@ -25,6 +25,31 @@ class ChatMessage:
 
 
 @dataclass(slots=True)
+class RoutingConstraints:
+    max_request_cost: float | None = None
+    min_quality: float | None = None
+    max_latency_ms: int | None = None
+    min_success_rate: float | None = None
+    estimated_input_tokens: int | None = None
+    expected_output_tokens: int = 1024
+    required_capabilities: list[str] = field(default_factory=list)
+    minimum_profile_samples: int = 20
+
+    def to_payload(self) -> dict[str, Any]:
+        payload = {
+            "max_request_cost": self.max_request_cost,
+            "min_quality": self.min_quality,
+            "max_latency_ms": self.max_latency_ms,
+            "min_success_rate": self.min_success_rate,
+            "estimated_input_tokens": self.estimated_input_tokens,
+            "expected_output_tokens": self.expected_output_tokens,
+            "required_capabilities": self.required_capabilities,
+            "minimum_profile_samples": self.minimum_profile_samples,
+        }
+        return {key: value for key, value in payload.items() if value is not None}
+
+
+@dataclass(slots=True)
 class ChatRequest:
     model: str | None = None
     messages: list[ChatMessage] = field(default_factory=list)
@@ -33,6 +58,10 @@ class ChatRequest:
     max_tokens: int | None = None
     enable_reasoning: bool | None = None
     routing_strategy: str | None = None
+    task_type: str | None = None
+    evaluation_run_id: str | None = None
+    routing_weights: dict[str, float] | None = None
+    routing_constraints: RoutingConstraints | None = None
 
     @classmethod
     def simple(cls, user_message: str) -> "ChatRequest":
@@ -51,6 +80,12 @@ class ChatRequest:
             "max_tokens": self.max_tokens,
             "enable_reasoning": self.enable_reasoning,
             "routing_strategy": self.routing_strategy,
+            "task_type": self.task_type,
+            "evaluation_run_id": self.evaluation_run_id,
+            "routing_weights": self.routing_weights,
+            "routing_constraints": (
+                self.routing_constraints.to_payload() if self.routing_constraints else None
+            ),
         }
         return {k: v for k, v in payload.items() if v is not None}
 
@@ -76,6 +111,21 @@ class ChatResponseUsage:
 
 
 @dataclass(slots=True)
+class GatewayMetadata:
+    trace_id: str | None = None
+    provider: str | None = None
+    strategy: str | None = None
+    task_type: str | None = None
+    evaluation_run_id: str | None = None
+    latency_ms: int | None = None
+    cost: float | None = None
+    fallback: bool = False
+    routing_score: float | None = None
+    routing_explanation: str | None = None
+    estimated_cost: float | None = None
+
+
+@dataclass(slots=True)
 class ChatResponse:
     id: str
     object: str
@@ -83,6 +133,7 @@ class ChatResponse:
     model: str
     choices: list[ChatResponseChoice]
     usage: ChatResponseUsage
+    gateway: GatewayMetadata | None = None
 
     @property
     def content(self) -> str | None:
@@ -113,6 +164,22 @@ class ChatResponse:
             ),
             total_tokens=int(usage_data.get("totalTokens", usage_data.get("total_tokens", 0)) or 0),
         )
+        gateway_data = data.get("gateway") or {}
+        gateway = None
+        if gateway_data:
+            gateway = GatewayMetadata(
+                trace_id=gateway_data.get("traceId") or gateway_data.get("trace_id"),
+                provider=gateway_data.get("provider"),
+                strategy=gateway_data.get("strategy"),
+                task_type=gateway_data.get("taskType") or gateway_data.get("task_type"),
+                evaluation_run_id=gateway_data.get("evaluationRunId") or gateway_data.get("evaluation_run_id"),
+                latency_ms=gateway_data.get("latencyMs") or gateway_data.get("latency_ms"),
+                cost=gateway_data.get("cost"),
+                fallback=bool(gateway_data.get("fallback", False)),
+                routing_score=gateway_data.get("routingScore") or gateway_data.get("routing_score"),
+                routing_explanation=gateway_data.get("routingExplanation") or gateway_data.get("routing_explanation"),
+                estimated_cost=gateway_data.get("estimatedCost") or gateway_data.get("estimated_cost"),
+            )
         return cls(
             id=str(data.get("id", "")),
             object=str(data.get("object", "chat.completion")),
@@ -120,6 +187,7 @@ class ChatResponse:
             model=str(data.get("model", "")),
             choices=choices,
             usage=usage,
+            gateway=gateway,
         )
 
 

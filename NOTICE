@@ -1,0 +1,26 @@
+EvalRoute third-party notices
+
+This repository is an integration and adaptation project. It must not be
+represented as wholly original work.
+
+Known migrated components:
+
+1. web/evaluation
+   Upstream: yuyuanweb/ai-test
+   URL: https://github.com/yuyuanweb/ai-test
+   Relationship: the frontend contains files previously identified as
+   byte-for-byte identical to the upstream frontend, plus local API adaptations.
+   License status checked 2026-08-05: no license grant was found on the upstream
+   repository page. Treat this component as not redistributable until written
+   permission or a valid license is obtained.
+
+2. web/gateway
+   Upstream: yuyuanweb/yu-ai-router
+   URL: https://github.com/yuyuanweb/yu-ai-router
+   Relationship: the frontend contains files previously identified as
+   byte-for-byte identical to the upstream frontend, plus local API adaptations.
+   License status checked 2026-08-05: the upstream README says “MIT”, but the
+   referenced LICENSE file was not present or retrievable. Preserve this notice
+   and verify the actual license text and copyright statement before distribution.
+
+

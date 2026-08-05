@@ -49,6 +49,17 @@ ALTER TABLE request_log
   ADD INDEX idx_evaluationRunId (evaluationRunId),
   ADD INDEX idx_taskType (taskType);
 
+-- Routing capability metadata used by hard constraints and task matching.
+-- These updates are idempotent and also repair databases initialized by older revisions.
+UPDATE model SET capabilities='["chat","summarization","classification","extraction"]'
+WHERE modelKey IN ('qwen-plus', 'qwen-turbo', 'deepseek-chat');
+UPDATE model SET capabilities='["chat","reasoning","math","code"]'
+WHERE modelKey IN ('qwen-max', 'deepseek-reasoner', 'glm-4.7', 'glm-4.6');
+UPDATE model SET capabilities='["chat","code"]'
+WHERE modelKey IN ('deepseek-coder', 'glm-4.7-flash');
+UPDATE model SET capabilities='["image"]'
+WHERE modelKey IN ('qwen-image-plus', 'cogview-3-plus');
+
 USE evalroute_evaluation;
 
 CREATE TABLE IF NOT EXISTS model_profile_snapshot (

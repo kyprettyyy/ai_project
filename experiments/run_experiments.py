@@ -1,100 +1,106 @@
-"""Dependency-free simulation harness for EvalRoute's five required experiments."""
+"""Command-line entry point for reproducible offline routing experiments."""
 
 from __future__ import annotations
 
+import argparse
+import hashlib
 import json
-from collections import defaultdict
 from pathlib import Path
 
+from routing_experiments import (
+    Constraints,
+    References,
+    load_observations,
+    run_suite,
+    validate_empirical_profiles,
+)
+
+
 ROOT = Path(__file__).resolve().parent
-FIXTURE = ROOT / "fixtures" / "demo_observations.jsonl"
-RESULTS = ROOT / "results"
-DEFAULT = {"quality": .45, "latency": .20, "cost": .20, "reliability": .15}
 
 
-def load_rows(path: Path) -> list[dict]:
-    return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
-
-
-def normalized(rows: list[dict]) -> list[dict]:
-    max_latency = max(row["latency_ms"] for row in rows) or 1
-    max_cost = max(row["cost"] for row in rows) or 1
-    return [{**row, "latency": 1 - row["latency_ms"] / max_latency,
-             "cost_score": 1 - row["cost"] / max_cost, "reliability": float(row["success"])} for row in rows]
-
-
-def score(row: dict, weights: dict[str, float]) -> float:
-    return (row["quality"] * weights["quality"] + row["latency"] * weights["latency"]
-            + row["cost_score"] * weights["cost"] + row["reliability"] * weights["reliability"])
-
-
-def select(rows: list[dict], weights: dict[str, float], budget: float | None = None,
-           unavailable: set[str] | None = None) -> list[dict]:
-    groups: dict[str, list[dict]] = defaultdict(list)
-    for row in rows:
-        if (budget is None or row["cost"] <= budget) and row["model"] not in (unavailable or set()):
-            groups[row["request"]].append(row)
-    return [max(candidates, key=lambda item: score(item, weights)) for candidates in groups.values() if candidates]
-
-
-def aggregate(chosen: list[dict]) -> dict:
-    n = len(chosen) or 1
-    return {"requests": len(chosen), "mean_quality": round(sum(x["quality"] for x in chosen) / n, 4),
-            "mean_latency_ms": round(sum(x["latency_ms"] for x in chosen) / n, 2),
-            "total_cost": round(sum(x["cost"] for x in chosen), 6),
-            "success_rate": round(sum(x["success"] for x in chosen) / n, 4),
-            "models": [x["model"] for x in chosen]}
-
-
-def pareto_front(rows: list[dict]) -> list[str]:
-    """Return non-dominated models over quality (max), latency (min), cost (min)."""
-    by_model: dict[str, dict] = {}
-    for model in {row["model"] for row in rows}:
-        items = [row for row in rows if row["model"] == model]
-        by_model[model] = {"quality": sum(x["quality"] for x in items) / len(items),
-                           "latency": sum(x["latency_ms"] for x in items) / len(items),
-                           "cost": sum(x["cost"] for x in items) / len(items)}
-    front = []
-    for model, metrics in by_model.items():
-        dominated = any(
-            other != model and candidate["quality"] >= metrics["quality"]
-            and candidate["latency"] <= metrics["latency"] and candidate["cost"] <= metrics["cost"]
-            and candidate != metrics for other, candidate in by_model.items()
+def markdown_report(payload: dict) -> str:
+    metadata = payload["metadata"]
+    evidence = payload["evidence"]
+    lines = [
+        "# Routing experiment results",
+        "",
+        f"> Evidence level: **{evidence['level']}**. {evidence['warning']}",
+        "",
+        "## Run metadata",
+        "",
+        f"- Observations: {metadata['observation_rows']}",
+        f"- Requests: {metadata['requests']}",
+        f"- Models: {', '.join(metadata['models'])}",
+        f"- Repeats: {metadata['repeats']}",
+        "",
+        "## Baseline comparison",
+        "",
+        "| Policy | Quality | Mean latency (ms) | P95 latency (ms) | Mean cost | Success | Violations | Utility |",
+        "|---|---:|---:|---:|---:|---:|---:|---:|",
+    ]
+    for policy, result in payload["baseline_comparison"].items():
+        metric = result["point_estimate"]
+        lines.append(
+            f"| {policy} | {metric['mean_quality']:.4f} | {metric['mean_latency_ms']:.2f} | "
+            f"{metric['p95_latency_ms']:.2f} | {metric['mean_cost']:.6f} | "
+            f"{metric['success_rate']:.4f} | {metric['constraint_violation_rate']:.4f} | "
+            f"{metric['utility']:.4f} |"
         )
-        if not dominated:
-            front.append(model)
-    return sorted(front)
+    for section in ("weight_sensitivity", "ablation", "failure_and_drift"):
+        lines.extend(["", f"## {section.replace('_', ' ').title()}", "", "```json", json.dumps(payload[section], indent=2), "```"])
+    lines.extend([
+        "",
+        "## Interpretation guardrail",
+        "",
+        "These numbers describe the supplied observation file only. A synthetic fixture verifies the evaluation code; "
+        "it does not establish that EvalRoute improves real model quality, latency, cost, or reliability.",
+        "",
+    ])
+    return "\n".join(lines)
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--input", type=Path, default=ROOT / "fixtures" / "demo_observations.jsonl")
+    parser.add_argument("--output-dir", type=Path, default=ROOT / "results")
+    parser.add_argument("--repeats", type=int, default=30)
+    parser.add_argument("--latency-reference-ms", type=float, default=1000.0)
+    parser.add_argument("--cost-reference", type=float, default=0.01)
+    parser.add_argument("--max-latency-ms", type=float, default=1000.0)
+    parser.add_argument("--max-cost", type=float, default=0.01)
+    parser.add_argument("--evidence-level", choices=("synthetic_demo", "empirical"), default="synthetic_demo")
+    return parser.parse_args()
 
 
 def main() -> None:
-    rows = normalized(load_rows(FIXTURE))
-    static = [row for row in rows if row["model"] == "model-a"]
-    policies = {
-        "quality_first": {"quality": .70, "latency": .10, "cost": .05, "reliability": .15},
-        "balanced": DEFAULT,
-        "latency_first": {"quality": .25, "latency": .50, "cost": .10, "reliability": .15},
+    args = parse_args()
+    input_bytes = args.input.read_bytes()
+    rows = load_observations(input_bytes.decode("utf-8").splitlines())
+    if args.evidence_level == "empirical":
+        validate_empirical_profiles(rows)
+    payload = run_suite(
+        rows,
+        repeats=args.repeats,
+        references=References(args.latency_reference_ms, args.cost_reference),
+        constraints=Constraints(args.max_cost, args.max_latency_ms),
+    )
+    payload["evidence"] = {
+        "level": args.evidence_level,
+        "source": str(args.input),
+        "sha256": hashlib.sha256(input_bytes).hexdigest(),
+        "warning": (
+            "Synthetic fixture output; do not cite as an empirical model benchmark."
+            if args.evidence_level == "synthetic_demo"
+            else "Caller-labelled empirical input; verify dataset, model and collection provenance before citation."
+        ),
     }
-    outputs = {
-        "experiment_1_static_vs_adaptive": {"static": aggregate(static), "adaptive": aggregate(select(rows, DEFAULT))},
-        "experiment_2_weight_sensitivity": {
-            "policies": {name: aggregate(select(rows, weights)) for name, weights in policies.items()},
-            "pareto_front": pareto_front(rows),
-        },
-        "experiment_3_cost_constraint": {"unconstrained": aggregate(select(rows, DEFAULT)),
-                                           "max_0_006": aggregate(select(rows, DEFAULT, budget=.006))},
-        "experiment_4_failure_injection": {"normal": aggregate(select(rows, DEFAULT)),
-                                             "model_b_down": aggregate(select(rows, DEFAULT, unavailable={"model-b"}))},
-    }
-    drifted = [{**row, "quality": max(0, row["quality"] - .20) if row["model"] == "model-b" else row["quality"]} for row in rows]
-    outputs["experiment_5_profile_drift"] = {"before": aggregate(select(rows, DEFAULT)), "after": aggregate(select(drifted, DEFAULT))}
-
-    RESULTS.mkdir(parents=True, exist_ok=True)
-    (RESULTS / "demo-results.json").write_text(json.dumps({"fixture": True, "experiments": outputs}, indent=2), encoding="utf-8")
-    lines = ["# Demo experiment results", "", "> Synthetic fixture output; not an empirical benchmark.", ""]
-    for name, result in outputs.items():
-        lines.extend([f"## {name}", "", "```json", json.dumps(result, indent=2), "```", ""])
-    (RESULTS / "demo-results.md").write_text("\n".join(lines), encoding="utf-8")
-    print(f"Wrote {len(outputs)} experiment summaries to {RESULTS}")
+    args.output_dir.mkdir(parents=True, exist_ok=True)
+    json_path = args.output_dir / "demo-results.json"
+    markdown_path = args.output_dir / "demo-results.md"
+    json_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    markdown_path.write_text(markdown_report(payload), encoding="utf-8")
+    print(f"Wrote {json_path} and {markdown_path}")
 
 
 if __name__ == "__main__":

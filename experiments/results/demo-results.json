@@ -1,0 +1,758 @@
+{
+  "metadata": {
+    "observation_rows": 12,
+    "requests": 4,
+    "models": [
+      "model-a",
+      "model-b",
+      "model-c"
+    ],
+    "repeats": 30,
+    "references": {
+      "latency_ms": 1000.0,
+      "cost_per_request": 0.01
+    },
+    "constraints": {
+      "max_cost": 0.01,
+      "max_latency_ms": 1000.0
+    }
+  },
+  "baseline_comparison": {
+    "fixed_strongest": {
+      "point_estimate": {
+        "requests": 4,
+        "mean_quality": 0.845,
+        "mean_latency_ms": 812.5,
+        "p95_latency_ms": 910.0,
+        "mean_cost": 0.012,
+        "total_cost": 0.048,
+        "success_rate": 1.0,
+        "constraint_violation_rate": 0.75,
+        "utility": 0.6031,
+        "model_distribution": {
+          "model-a": 1.0
+        }
+      },
+      "stability": {
+        "mean_quality": {
+          "mean": 0.845,
+          "stddev": 0.0,
+          "ci95_low": 0.845,
+          "ci95_high": 0.845
+        },
+        "mean_latency_ms": {
+          "mean": 812.5,
+          "stddev": 0.0,
+          "ci95_low": 812.5,
+          "ci95_high": 812.5
+        },
+        "p95_latency_ms": {
+          "mean": 910.0,
+          "stddev": 0.0,
+          "ci95_low": 910.0,
+          "ci95_high": 910.0
+        },
+        "mean_cost": {
+          "mean": 0.012,
+          "stddev": 0.0,
+          "ci95_low": 0.012,
+          "ci95_high": 0.012
+        },
+        "success_rate": {
+          "mean": 1.0,
+          "stddev": 0.0,
+          "ci95_low": 1.0,
+          "ci95_high": 1.0
+        },
+        "constraint_violation_rate": {
+          "mean": 0.75,
+          "stddev": 0.0,
+          "ci95_low": 0.75,
+          "ci95_high": 0.75
+        },
+        "utility": {
+          "mean": 0.6031,
+          "stddev": 0.0,
+          "ci95_low": 0.6031,
+          "ci95_high": 0.6031
+        }
+      }
+    },
+    "fixed_cheapest": {
+      "point_estimate": {
+        "requests": 4,
+        "mean_quality": 0.71,
+        "mean_latency_ms": 265.0,
+        "p95_latency_ms": 300.0,
+        "mean_cost": 0.002,
+        "total_cost": 0.008,
+        "success_rate": 0.75,
+        "constraint_violation_rate": 0.0,
+        "utility": 0.6502,
+        "model_distribution": {
+          "model-c": 1.0
+        }
+      },
+      "stability": {
+        "mean_quality": {
+          "mean": 0.71,
+          "stddev": 0.0,
+          "ci95_low": 0.71,
+          "ci95_high": 0.71
+        },
+        "mean_latency_ms": {
+          "mean": 265.0,
+          "stddev": 0.0,
+          "ci95_low": 265.0,
+          "ci95_high": 265.0
+        },
+        "p95_latency_ms": {
+          "mean": 300.0,
+          "stddev": 0.0,
+          "ci95_low": 300.0,
+          "ci95_high": 300.0
+        },
+        "mean_cost": {
+          "mean": 0.002,
+          "stddev": 0.0,
+          "ci95_low": 0.002,
+          "ci95_high": 0.002
+        },
+        "success_rate": {
+          "mean": 0.75,
+          "stddev": 0.0,
+          "ci95_low": 0.75,
+          "ci95_high": 0.75
+        },
+        "constraint_violation_rate": {
+          "mean": 0.0,
+          "stddev": 0.0,
+          "ci95_low": 0.0,
+          "ci95_high": 0.0
+        },
+        "utility": {
+          "mean": 0.6502,
+          "stddev": 0.0,
+          "ci95_low": 0.6502,
+          "ci95_high": 0.6502
+        }
+      }
+    },
+    "random": {
+      "point_estimate": {
+        "requests": 4,
+        "mean_quality": 0.8325,
+        "mean_latency_ms": 530.0,
+        "p95_latency_ms": 650.0,
+        "mean_cost": 0.00675,
+        "total_cost": 0.027,
+        "success_rate": 1.0,
+        "constraint_violation_rate": 0.0,
+        "utility": 0.6855,
+        "model_distribution": {
+          "model-a": 0.25,
+          "model-b": 0.75
+        }
+      },
+      "stability": {
+        "mean_quality": {
+          "mean": 0.793583,
+          "stddev": 0.025953,
+          "ci95_low": 0.784296,
+          "ci95_high": 0.802871
+        },
+        "mean_latency_ms": {
+          "mean": 508.583333,
+          "stddev": 95.228137,
+          "ci95_low": 474.506382,
+          "ci95_high": 542.660284
+        },
+        "p95_latency_ms": {
+          "mean": 776.333333,
+          "stddev": 157.096134,
+          "ci95_low": 720.117204,
+          "ci95_high": 832.549463
+        },
+        "mean_cost": {
+          "mean": 0.006392,
+          "stddev": 0.001745,
+          "ci95_low": 0.005767,
+          "ci95_high": 0.007016
+        },
+        "success_rate": {
+          "mean": 0.916667,
+          "stddev": 0.119866,
+          "ci95_low": 0.873773,
+          "ci95_high": 0.95956
+        },
+        "constraint_violation_rate": {
+          "mean": 0.233333,
+          "stddev": 0.196229,
+          "ci95_low": 0.163114,
+          "ci95_high": 0.303553
+        },
+        "utility": {
+          "mean": 0.65338,
+          "stddev": 0.030283,
+          "ci95_low": 0.642543,
+          "ci95_high": 0.664217
+        }
+      }
+    },
+    "round_robin": {
+      "point_estimate": {
+        "requests": 4,
+        "mean_quality": 0.85,
+        "mean_latency_ms": 615.0,
+        "p95_latency_ms": 870.0,
+        "mean_cost": 0.00825,
+        "total_cost": 0.033,
+        "success_rate": 1.0,
+        "constraint_violation_rate": 0.5,
+        "utility": 0.6753,
+        "model_distribution": {
+          "model-a": 0.5,
+          "model-b": 0.25,
+          "model-c": 0.25
+        }
+      },
+      "stability": {
+        "mean_quality": {
+          "mean": 0.85,
+          "stddev": 0.0,
+          "ci95_low": 0.85,
+          "ci95_high": 0.85
+        },
+        "mean_latency_ms": {
+          "mean": 615.0,
+          "stddev": 0.0,
+          "ci95_low": 615.0,
+          "ci95_high": 615.0
+        },
+        "p95_latency_ms": {
+          "mean": 870.0,
+          "stddev": 0.0,
+          "ci95_low": 870.0,
+          "ci95_high": 870.0
+        },
+        "mean_cost": {
+          "mean": 0.00825,
+          "stddev": 0.0,
+          "ci95_low": 0.00825,
+          "ci95_high": 0.00825
+        },
+        "success_rate": {
+          "mean": 1.0,
+          "stddev": 0.0,
+          "ci95_low": 1.0,
+          "ci95_high": 1.0
+        },
+        "constraint_violation_rate": {
+          "mean": 0.5,
+          "stddev": 0.0,
+          "ci95_low": 0.5,
+          "ci95_high": 0.5
+        },
+        "utility": {
+          "mean": 0.6753,
+          "stddev": 0.0,
+          "ci95_low": 0.6753,
+          "ci95_high": 0.6753
+        }
+      }
+    },
+    "cost_first": {
+      "point_estimate": {
+        "requests": 4,
+        "mean_quality": 0.71,
+        "mean_latency_ms": 265.0,
+        "p95_latency_ms": 300.0,
+        "mean_cost": 0.002,
+        "total_cost": 0.008,
+        "success_rate": 0.75,
+        "constraint_violation_rate": 0.0,
+        "utility": 0.6502,
+        "model_distribution": {
+          "model-c": 1.0
+        }
+      },
+      "stability": {
+        "mean_quality": {
+          "mean": 0.71,
+          "stddev": 0.0,
+          "ci95_low": 0.71,
+          "ci95_high": 0.71
+        },
+        "mean_latency_ms": {
+          "mean": 265.0,
+          "stddev": 0.0,
+          "ci95_low": 265.0,
+          "ci95_high": 265.0
+        },
+        "p95_latency_ms": {
+          "mean": 300.0,
+          "stddev": 0.0,
+          "ci95_low": 300.0,
+          "ci95_high": 300.0
+        },
+        "mean_cost": {
+          "mean": 0.002,
+          "stddev": 0.0,
+          "ci95_low": 0.002,
+          "ci95_high": 0.002
+        },
+        "success_rate": {
+          "mean": 0.75,
+          "stddev": 0.0,
+          "ci95_low": 0.75,
+          "ci95_high": 0.75
+        },
+        "constraint_violation_rate": {
+          "mean": 0.0,
+          "stddev": 0.0,
+          "ci95_low": 0.0,
+          "ci95_high": 0.0
+        },
+        "utility": {
+          "mean": 0.6502,
+          "stddev": 0.0,
+          "ci95_low": 0.6502,
+          "ci95_high": 0.6502
+        }
+      }
+    },
+    "latency_first": {
+      "point_estimate": {
+        "requests": 4,
+        "mean_quality": 0.71,
+        "mean_latency_ms": 265.0,
+        "p95_latency_ms": 300.0,
+        "mean_cost": 0.002,
+        "total_cost": 0.008,
+        "success_rate": 0.75,
+        "constraint_violation_rate": 0.0,
+        "utility": 0.6502,
+        "model_distribution": {
+          "model-c": 1.0
+        }
+      },
+      "stability": {
+        "mean_quality": {
+          "mean": 0.71,
+          "stddev": 0.0,
+          "ci95_low": 0.71,
+          "ci95_high": 0.71
+        },
+        "mean_latency_ms": {
+          "mean": 265.0,
+          "stddev": 0.0,
+          "ci95_low": 265.0,
+          "ci95_high": 265.0
+        },
+        "p95_latency_ms": {
+          "mean": 300.0,
+          "stddev": 0.0,
+          "ci95_low": 300.0,
+          "ci95_high": 300.0
+        },
+        "mean_cost": {
+          "mean": 0.002,
+          "stddev": 0.0,
+          "ci95_low": 0.002,
+          "ci95_high": 0.002
+        },
+        "success_rate": {
+          "mean": 0.75,
+          "stddev": 0.0,
+          "ci95_low": 0.75,
+          "ci95_high": 0.75
+        },
+        "constraint_violation_rate": {
+          "mean": 0.0,
+          "stddev": 0.0,
+          "ci95_low": 0.0,
+          "ci95_high": 0.0
+        },
+        "utility": {
+          "mean": 0.6502,
+          "stddev": 0.0,
+          "ci95_low": 0.6502,
+          "ci95_high": 0.6502
+        }
+      }
+    },
+    "static_weighted": {
+      "point_estimate": {
+        "requests": 4,
+        "mean_quality": 0.7925,
+        "mean_latency_ms": 382.5,
+        "p95_latency_ms": 560.0,
+        "mean_cost": 0.004,
+        "total_cost": 0.016,
+        "success_rate": 1.0,
+        "constraint_violation_rate": 0.0,
+        "utility": 0.6951,
+        "model_distribution": {
+          "model-b": 0.5,
+          "model-c": 0.5
+        }
+      },
+      "stability": {
+        "mean_quality": {
+          "mean": 0.7925,
+          "stddev": 0.0,
+          "ci95_low": 0.7925,
+          "ci95_high": 0.7925
+        },
+        "mean_latency_ms": {
+          "mean": 382.5,
+          "stddev": 0.0,
+          "ci95_low": 382.5,
+          "ci95_high": 382.5
+        },
+        "p95_latency_ms": {
+          "mean": 560.0,
+          "stddev": 0.0,
+          "ci95_low": 560.0,
+          "ci95_high": 560.0
+        },
+        "mean_cost": {
+          "mean": 0.004,
+          "stddev": 0.0,
+          "ci95_low": 0.004,
+          "ci95_high": 0.004
+        },
+        "success_rate": {
+          "mean": 1.0,
+          "stddev": 0.0,
+          "ci95_low": 1.0,
+          "ci95_high": 1.0
+        },
+        "constraint_violation_rate": {
+          "mean": 0.0,
+          "stddev": 0.0,
+          "ci95_low": 0.0,
+          "ci95_high": 0.0
+        },
+        "utility": {
+          "mean": 0.6951,
+          "stddev": 0.0,
+          "ci95_low": 0.6951,
+          "ci95_high": 0.6951
+        }
+      }
+    },
+    "evalroute_feedback": {
+      "point_estimate": {
+        "requests": 4,
+        "mean_quality": 0.7925,
+        "mean_latency_ms": 382.5,
+        "p95_latency_ms": 560.0,
+        "mean_cost": 0.004,
+        "total_cost": 0.016,
+        "success_rate": 1.0,
+        "constraint_violation_rate": 0.0,
+        "utility": 0.6951,
+        "model_distribution": {
+          "model-b": 0.5,
+          "model-c": 0.5
+        }
+      },
+      "stability": {
+        "mean_quality": {
+          "mean": 0.7925,
+          "stddev": 0.0,
+          "ci95_low": 0.7925,
+          "ci95_high": 0.7925
+        },
+        "mean_latency_ms": {
+          "mean": 382.5,
+          "stddev": 0.0,
+          "ci95_low": 382.5,
+          "ci95_high": 382.5
+        },
+        "p95_latency_ms": {
+          "mean": 560.0,
+          "stddev": 0.0,
+          "ci95_low": 560.0,
+          "ci95_high": 560.0
+        },
+        "mean_cost": {
+          "mean": 0.004,
+          "stddev": 0.0,
+          "ci95_low": 0.004,
+          "ci95_high": 0.004
+        },
+        "success_rate": {
+          "mean": 1.0,
+          "stddev": 0.0,
+          "ci95_low": 1.0,
+          "ci95_high": 1.0
+        },
+        "constraint_violation_rate": {
+          "mean": 0.0,
+          "stddev": 0.0,
+          "ci95_low": 0.0,
+          "ci95_high": 0.0
+        },
+        "utility": {
+          "mean": 0.6951,
+          "stddev": 0.0,
+          "ci95_low": 0.6951,
+          "ci95_high": 0.6951
+        }
+      }
+    }
+  },
+  "weight_sensitivity": {
+    "quality_first": {
+      "requests": 4,
+      "mean_quality": 0.8275,
+      "mean_latency_ms": 462.5,
+      "p95_latency_ms": 560.0,
+      "mean_cost": 0.0055,
+      "total_cost": 0.022,
+      "success_rate": 1.0,
+      "constraint_violation_rate": 0.0,
+      "utility": 0.7031,
+      "model_distribution": {
+        "model-b": 1.0
+      }
+    },
+    "balanced": {
+      "requests": 4,
+      "mean_quality": 0.7925,
+      "mean_latency_ms": 382.5,
+      "p95_latency_ms": 560.0,
+      "mean_cost": 0.004,
+      "total_cost": 0.016,
+      "success_rate": 1.0,
+      "constraint_violation_rate": 0.0,
+      "utility": 0.6951,
+      "model_distribution": {
+        "model-b": 0.5,
+        "model-c": 0.5
+      }
+    },
+    "cost_first": {
+      "requests": 4,
+      "mean_quality": 0.7375,
+      "mean_latency_ms": 317.5,
+      "p95_latency_ms": 500.0,
+      "mean_cost": 0.003,
+      "total_cost": 0.012,
+      "success_rate": 1.0,
+      "constraint_violation_rate": 0.0,
+      "utility": 0.6599,
+      "model_distribution": {
+        "model-b": 0.25,
+        "model-c": 0.75
+      }
+    },
+    "latency_first": {
+      "requests": 4,
+      "mean_quality": 0.7375,
+      "mean_latency_ms": 317.5,
+      "p95_latency_ms": 500.0,
+      "mean_cost": 0.003,
+      "total_cost": 0.012,
+      "success_rate": 1.0,
+      "constraint_violation_rate": 0.0,
+      "utility": 0.6599,
+      "model_distribution": {
+        "model-b": 0.25,
+        "model-c": 0.75
+      }
+    },
+    "reliability_first": {
+      "requests": 4,
+      "mean_quality": 0.7925,
+      "mean_latency_ms": 382.5,
+      "p95_latency_ms": 560.0,
+      "mean_cost": 0.004,
+      "total_cost": 0.016,
+      "success_rate": 1.0,
+      "constraint_violation_rate": 0.0,
+      "utility": 0.6951,
+      "model_distribution": {
+        "model-b": 0.5,
+        "model-c": 0.5
+      }
+    }
+  },
+  "ablation": {
+    "without_quality": {
+      "requests": 4,
+      "mean_quality": 0.7375,
+      "mean_latency_ms": 317.5,
+      "p95_latency_ms": 500.0,
+      "mean_cost": 0.003,
+      "total_cost": 0.012,
+      "success_rate": 1.0,
+      "constraint_violation_rate": 0.0,
+      "utility": 0.6599,
+      "model_distribution": {
+        "model-b": 0.25,
+        "model-c": 0.75
+      }
+    },
+    "without_latency": {
+      "requests": 4,
+      "mean_quality": 0.8125,
+      "mean_latency_ms": 420.0,
+      "p95_latency_ms": 560.0,
+      "mean_cost": 0.00475,
+      "total_cost": 0.019,
+      "success_rate": 1.0,
+      "constraint_violation_rate": 0.0,
+      "utility": 0.702,
+      "model_distribution": {
+        "model-b": 0.75,
+        "model-c": 0.25
+      }
+    },
+    "without_cost": {
+      "requests": 4,
+      "mean_quality": 0.8275,
+      "mean_latency_ms": 462.5,
+      "p95_latency_ms": 560.0,
+      "mean_cost": 0.0055,
+      "total_cost": 0.022,
+      "success_rate": 1.0,
+      "constraint_violation_rate": 0.0,
+      "utility": 0.7031,
+      "model_distribution": {
+        "model-b": 1.0
+      }
+    },
+    "without_reliability": {
+      "requests": 4,
+      "mean_quality": 0.765,
+      "mean_latency_ms": 330.0,
+      "p95_latency_ms": 560.0,
+      "mean_cost": 0.003,
+      "total_cost": 0.012,
+      "success_rate": 0.75,
+      "constraint_violation_rate": 0.0,
+      "utility": 0.6855,
+      "model_distribution": {
+        "model-b": 0.25,
+        "model-c": 0.75
+      }
+    }
+  },
+  "failure_and_drift": {
+    "normal": {
+      "requests": 4,
+      "mean_quality": 0.7925,
+      "mean_latency_ms": 382.5,
+      "p95_latency_ms": 560.0,
+      "mean_cost": 0.004,
+      "total_cost": 0.016,
+      "success_rate": 1.0,
+      "constraint_violation_rate": 0.0,
+      "utility": 0.6951,
+      "model_distribution": {
+        "model-b": 0.5,
+        "model-c": 0.5
+      }
+    },
+    "model-b_unavailable": {
+      "requests": 4,
+      "mean_quality": 0.71,
+      "mean_latency_ms": 265.0,
+      "p95_latency_ms": 300.0,
+      "mean_cost": 0.002,
+      "total_cost": 0.008,
+      "success_rate": 0.75,
+      "constraint_violation_rate": 0.0,
+      "utility": 0.6502,
+      "model_distribution": {
+        "model-c": 1.0
+      }
+    },
+    "model-b_latency_spike": {
+      "requests": 4,
+      "mean_quality": 0.71,
+      "mean_latency_ms": 265.0,
+      "p95_latency_ms": 300.0,
+      "mean_cost": 0.002,
+      "total_cost": 0.008,
+      "success_rate": 0.75,
+      "constraint_violation_rate": 0.0,
+      "utility": 0.6502,
+      "model_distribution": {
+        "model-c": 1.0
+      }
+    },
+    "model-b_price_spike": {
+      "requests": 4,
+      "mean_quality": 0.71,
+      "mean_latency_ms": 265.0,
+      "p95_latency_ms": 300.0,
+      "mean_cost": 0.002,
+      "total_cost": 0.008,
+      "success_rate": 0.75,
+      "constraint_violation_rate": 0.0,
+      "utility": 0.6502,
+      "model_distribution": {
+        "model-c": 1.0
+      }
+    },
+    "model-b_quality_drop": {
+      "requests": 4,
+      "mean_quality": 0.71,
+      "mean_latency_ms": 265.0,
+      "p95_latency_ms": 300.0,
+      "mean_cost": 0.002,
+      "total_cost": 0.008,
+      "success_rate": 0.75,
+      "constraint_violation_rate": 0.0,
+      "utility": 0.6502,
+      "model_distribution": {
+        "model-c": 1.0
+      }
+    },
+    "model-b_stale_profile": {
+      "requests": 4,
+      "mean_quality": 0.7375,
+      "mean_latency_ms": 317.5,
+      "p95_latency_ms": 500.0,
+      "mean_cost": 0.003,
+      "total_cost": 0.012,
+      "success_rate": 1.0,
+      "constraint_violation_rate": 0.0,
+      "utility": 0.6599,
+      "model_distribution": {
+        "model-b": 0.25,
+        "model-c": 0.75
+      }
+    },
+    "model-b_low_sample": {
+      "requests": 4,
+      "mean_quality": 0.7375,
+      "mean_latency_ms": 317.5,
+      "p95_latency_ms": 500.0,
+      "mean_cost": 0.003,
+      "total_cost": 0.012,
+      "success_rate": 1.0,
+      "constraint_violation_rate": 0.0,
+      "utility": 0.6599,
+      "model_distribution": {
+        "model-b": 0.25,
+        "model-c": 0.75
+      }
+    }
+  },
+  "pareto_front": [
+    "model-a",
+    "model-b",
+    "model-c"
+  ],
+  "evidence": {
+    "level": "synthetic_demo",
+    "source": "D:\\Study\\project\\codex\\ai\u7f51\u5173\u9879\u76ee\u5b66\u4e60\\experiments\\fixtures\\demo_observations.jsonl",
+    "sha256": "5d0f2d07c199ba5734345359a24558420110dc10d880aee3e65a55ab7db9f584",
+    "warning": "Synthetic fixture output; do not cite as an empirical model benchmark."
+  }
+}

@@ -13,7 +13,7 @@ The current synthetic fixture does not test these hypotheses. It tests the softw
 
 ## Data unit and split
 
-One observation represents one request/model outcome and contains a stable request ID, task type, exact model ID, quality in `[0,1]`, latency in milliseconds, cost, and success in `[0,1]`. Optional fields hold profile quality/reliability, sample count, age, and reference settings.
+One observation represents one request/model pair but has two explicit time boundaries. `profile_quality`, `profile_latency_ms`, `profile_cost`, `profile_reliability`, `profile_sample_count`, and `profile_age_days` are computed from profile-training data and are available before selection. `observed_quality`, `observed_latency_ms`, `observed_cost`, and `observed_success` are held-out outcomes available only after selection. The experiment rejects rows that omit either side of this contract.
 
 An empirical study must split requests before building profiles:
 
@@ -21,7 +21,7 @@ An empirical study must split requests before building profiles:
 2. validation data selects heuristic weights or other hyperparameters;
 3. held-out test data evaluates policy selections.
 
-The outcome for a held-out request must never be used to create the profile used to route that same request. The demo fixture relaxes this rule only as a labelled smoke test.
+The outcome for a held-out request must never be used to create the profile used to route that same request. Selection code cannot access `observed_*`; metric aggregation cannot substitute `profile_*`. A regression test mutates every held-out outcome and verifies that all eight policy selections remain unchanged. The demo fixture is synthetic but follows the same schema.
 
 ## Reproducibility controls
 
@@ -37,13 +37,13 @@ Evaluation calls should specify an explicit model rather than using adaptive rou
 
 ## Baselines
 
-The harness compares fixed strongest, fixed cheapest, random, round-robin, cost-first, latency-first, static weighted, and EvalRoute feedback routing. All policies receive the same request trace. Baselines that do not enforce constraints may violate them; this is reported rather than silently filtering their selections.
+The harness compares fixed strongest, fixed cheapest, random, round-robin, cost-first, latency-first, static weighted, and EvalRoute feedback routing. Fixed and static baselines use a separately hashed immutable prior configuration. Cost-first and latency-first use training-derived estimates. EvalRoute feedback delegates to the production `ExplainableRouter`. All policies receive the same held-out trace, and observed violations are reported rather than used during selection.
 
 The fixed-strongest model and any learned policy parameters must be chosen using training/validation data, never the held-out outcomes.
 
 ## Sensitivity and ablation
 
-Five presets vary the objective emphasis: quality-first, balanced, cost-first, latency-first, and reliability-first. Four ablations set one primary signal weight to zero and renormalize the rest. The empirical report should compare the change in each raw metric, not only the auxiliary utility value.
+Five presets vary the objective emphasis: quality-first, balanced, cost-first, latency-first, and reliability-first. Seven ablations remove each production-router dimension—quality, latency, cost, reliability, task, context, and budget—and let the core router renormalize the rest. The empirical report should compare the change in each raw metric, not only the auxiliary utility value.
 
 ## Failure and drift
 

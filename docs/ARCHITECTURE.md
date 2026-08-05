@@ -14,7 +14,9 @@ flowchart TD
   H --> A
 ```
 
-The router and experiment harness are standard-library-only. This keeps the research decision logic independently reproducible from the integrated web platform.
+The router and experiment harness are standard-library-only. The feedback experiment imports the production `ExplainableRouter` directly, so the seven dimensions, default weights, constraints, confidence fusion, and tie-breaking logic have one canonical implementation. The focused review map is under `research/`.
+
+Offline rows have an explicit temporal boundary: `profile_*` and immutable priors exist before selection; `observed_*` exists only after invocation and is used only for metrics. Static weighted routing receives only the immutable prior object, while feedback routing receives the training-derived profile through the production domain types.
 
 ## Integrated service boundary
 

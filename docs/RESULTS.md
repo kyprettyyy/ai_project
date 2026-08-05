@@ -2,44 +2,34 @@
 
 ## Current evidence level
 
-The committed report is a **synthetic smoke test**, generated from 12 observations covering four requests and three placeholder models. It demonstrates that every policy is evaluated on the same request trace and that the reporting code emits the intended metrics. It cannot support a claim about real LLM performance.
+The committed report is a **synthetic smoke test**, generated from 12 observations covering four requests and three placeholder models. It verifies that the static and feedback strategies are behaviorally distinct, selection is isolated from held-out outcomes, the production router is reused, and reporting works. It cannot support a claim about real LLM performance.
 
-The main negative result is that EvalRoute feedback and static weighted routing produce the same selection and metrics on the current fixture. This is expected because the fixture is too small and its profile signals do not provide information beyond the static scores. The project deliberately reports this tie instead of presenting a fabricated improvement.
+Static weighted routing and EvalRoute feedback no longer tie on the fixture. Static weighted selects from immutable model priors and records mean quality `0.8275`, mean latency `462.50 ms`, and mean cost `0.005500`. Feedback routing selects from training-derived profiles through the production seven-dimensional router and records `0.7925`, `382.50 ms`, and `0.004000`. These numbers show different code paths and trade-offs; they do not show that either policy is superior on real data.
 
-## Reported metrics
+## Integrity controls
 
-Every policy report includes:
-
-- task quality;
-- mean and P95 latency;
-- mean and total cost;
-- success rate;
-- cost/latency constraint-violation rate;
-- selected-model distribution;
-- an auxiliary utility score.
-
-Random routing is repeated with deterministic seeds. The report includes the mean, standard deviation, and normal-approximation 95% confidence interval across repeats. These intervals describe routing randomness only; they are not a substitute for resampling a sufficiently large empirical dataset.
+- all policies select without reading `observed_*`;
+- final metrics and Pareto analysis read only `observed_*`;
+- the former ambiguous outcome field names are rejected;
+- empirical rows require complete quality, latency, cost, reliability, sample-count, and age profiles;
+- the immutable prior input and observation input receive separate SHA-256 hashes;
+- a regression test replaces every held-out outcome with adversarial values and confirms unchanged selections.
 
 ## Experiment matrix
 
-The offline suite contains:
+The offline suite contains eight policy baselines, five objective-weight presets, seven production-dimension ablations, model unavailability and profile drift/failure scenarios, repeated random trials, and model-level observed quality/latency/cost Pareto analysis.
 
-1. eight policy baselines;
-2. five objective-weight presets;
-3. four one-signal ablations;
-4. unavailability, latency spike, price spike, quality drop, stale-profile, and low-sample scenarios;
-5. model-level quality/latency/cost Pareto analysis.
-
-Machine-readable and reviewer-friendly outputs are stored in `experiments/results/demo-results.json` and `experiments/results/demo-results.md`.
+Every policy report includes task quality, mean and P95 latency, mean and total cost, success rate, observed constraint-violation rate, selected-model distribution, and an auxiliary utility score. Random-policy intervals describe routing randomness only and are not a substitute for request-level bootstrap analysis.
 
 ## Empirical acceptance gate
 
-Results may be described as an empirical benchmark only after all of the following are recorded:
+Results may be described as an empirical benchmark only after recording:
 
 1. dataset name, version, task taxonomy, license, sampling method, and immutable hash;
 2. exact model identifiers, provider versions, decoding parameters, price snapshot, and collection time;
-3. the profile-training/validation/test split, with no test outcome used to construct its own routing signal;
-4. scoring rubric, judge prompt/version, blinded presentation order, and human-audit protocol;
-5. failed calls, exclusions, retries, raw observations, repeated-run seeds, and confidence intervals.
+3. request-disjoint profile-training, validation, and held-out test splits;
+4. the independent static-prior source and the rule used to freeze it before test evaluation;
+5. scoring rubric, judge prompt/version, blinded presentation order, and human-audit protocol;
+6. failures, exclusions, retries, raw observations, seeds, and paired confidence intervals.
 
-Until then, resume bullets must describe the experiment **framework**, not a measured performance gain.
+Until then, describe the experiment framework and integrity checks, not a measured performance gain.

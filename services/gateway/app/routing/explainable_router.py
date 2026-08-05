@@ -95,8 +95,15 @@ class CandidateSignals:
     profile_version: int = 0
     profile_task_type: str | None = None
     profile_age_days: float = 0.0
+    estimated_request_cost: Decimal | None = None
+    quality_prior_score: float = 0.5
+    latency_prior_score: float | None = None
+    cost_prior_score: float | None = None
+    reliability_prior_score: float | None = None
 
     def estimate_cost(self, context: RoutingContext) -> Decimal:
+        if self.estimated_request_cost is not None:
+            return max(Decimal("0"), self.estimated_request_cost).quantize(Decimal("0.000001"))
         input_cost = self.input_price * Decimal(context.estimated_input_tokens) / Decimal("1000")
         output_cost = self.output_price * Decimal(context.expected_output_tokens) / Decimal("1000")
         return (input_cost + output_cost).quantize(Decimal("0.000001"))
@@ -179,20 +186,32 @@ class ExplainableRouter:
             half_life = max(0.000001, float(context.profile_half_life_days))
             freshness = math.exp2(-age / half_life)
             confidence = sample_confidence * freshness
-            quality = _blend(item.quality_score, 0.5, confidence)
+            quality = _blend(item.quality_score, item.quality_prior_score, confidence)
             quality = _clamp01(
                 quality - max(0.0, context.quality_uncertainty_penalty) * (1.0 - confidence)
             )
             live_latency_score = _inverse_score(
                 max(0, item.avg_latency_ms), max(1, context.latency_reference_ms)
             )
-            latency = _blend(item.profile_latency_score, live_latency_score, confidence)
+            latency = _blend(
+                item.profile_latency_score,
+                live_latency_score if item.latency_prior_score is None else item.latency_prior_score,
+                confidence,
+            )
             live_cost_score = _inverse_score(
                 float(estimated_cost), max(0.000001, float(context.cost_reference))
             )
-            cost = _blend(item.profile_cost_score, live_cost_score, confidence)
+            cost = _blend(
+                item.profile_cost_score,
+                live_cost_score if item.cost_prior_score is None else item.cost_prior_score,
+                confidence,
+            )
             live_reliability = _clamp01(item.live_success_rate)
-            reliability = _blend(item.profile_reliability_score, live_reliability, confidence)
+            reliability = _blend(
+                item.profile_reliability_score,
+                live_reliability if item.reliability_prior_score is None else item.reliability_prior_score,
+                confidence,
+            )
             task = self._task_score(item, context)
             required_tokens = max(1, context.required_tokens)
             context_score = _clamp01(item.context_length / (required_tokens * 4))

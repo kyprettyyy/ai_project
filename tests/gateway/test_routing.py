@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import sys
 import unittest
+from dataclasses import replace
 from decimal import Decimal
 from pathlib import Path
 
@@ -205,6 +206,33 @@ class ExplainableRoutingTest(unittest.TestCase):
         ).selected
         self.assertEqual(fresh.profile_confidence, 1)
         self.assertAlmostEqual(stale.profile_confidence, 0.25)
+
+    def test_low_confidence_blends_all_profile_dimensions_with_explicit_priors(self) -> None:
+        item = replace(
+            candidate(1, "prior-backed", quality=1, input_price="0", output_price="0", sample_count=0),
+            profile_latency_score=1,
+            profile_cost_score=1,
+            profile_reliability_score=1,
+            quality_prior_score=.2,
+            latency_prior_score=.3,
+            cost_prior_score=.4,
+            reliability_prior_score=.6,
+        )
+        selected = self.router.rank([item], RoutingContext(quality_uncertainty_penalty=0)).selected
+        self.assertEqual(
+            selected.scores,
+            {"quality": .2, "latency": .3, "cost": .4, "reliability": .6,
+             "task": .5, "context": 1.0, "budget": .5},
+        )
+
+    def test_explicit_request_cost_is_used_for_budget_constraint(self) -> None:
+        item = replace(
+            candidate(1, "estimated", quality=.8, input_price="0", output_price="0"),
+            estimated_request_cost=Decimal("0.02"),
+        )
+        plan = self.router.rank([item], RoutingContext(max_request_cost=Decimal("0.01")))
+        self.assertIsNone(plan.selected)
+        self.assertIn("estimated_cost", plan.candidates[0].rejection_reasons[0])
 
     def test_weight_normalization_rejects_negative_nan_and_unknown_values(self) -> None:
         weights = normalize_weights({"quality": float("nan"), "cost": -1, "unknown": 999})

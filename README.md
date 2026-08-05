@@ -2,45 +2,29 @@
 
 EvalRoute is a research prototype for one question:
 
-> Can evaluation feedback improve LLM selection under quality, latency, cost, and reliability constraints?
+> Can held-out evaluation feedback improve LLM selection under quality, latency, cost, and reliability constraints compared with immutable model priors?
 
-The project turns model evaluation results into versioned capability profiles, applies hard request constraints, and ranks eligible models with an explainable multi-objective score. The research core is Python and runs without a database, API key, GPU, or third-party package.
+## Start with the research path
 
-> **Evidence boundary:** the checked-in results use a 12-row synthetic fixture. They verify the experiment pipeline but are **not** evidence that EvalRoute outperforms a baseline on real models. See [Results](docs/RESULTS.md) and [Provenance](docs/PROVENANCE.md).
+The focused entry point is [`research/`](research/README.md). It links only the router, profile scoring, leakage-safe experiments, focused tests, and research documentation. The large application surfaces elsewhere in the repository are optional integration context, not the research contribution.
 
-## My Contributions
+> **Evidence boundary:** checked-in results use a 12-row synthetic fixture. They verify policy separation, data-flow integrity, and report generation; they are not evidence of real-model superiority. See [Results](docs/RESULTS.md).
 
-I designed and implemented:
+The experiment enforces three design boundaries:
 
-- the multi-objective LLM routing formulation;
-- hard constraint filtering before candidate ranking;
-- stable reference-based cost and latency scoring;
-- capability-profile feedback with sample confidence and freshness adjustment;
-- deterministic selection, fallback ordering, and candidate-level explanations;
-- eight routing baselines, weight sensitivity, signal ablations, failure/drift experiments, Pareto analysis, and repeated-trial uncertainty summaries;
-- 40 focused checks covering routing edge cases, evaluation aggregation, experiment metrics, and the profile-to-routing feedback loop;
-- the reproducibility protocol, empirical-data leakage guardrails, and evaluation methodology.
-
-The core implementation is concentrated in `services/gateway/app/routing/explainable_router.py`, `services/evaluation/app/scoring/profile_scoring.py`, `experiments/routing_experiments.py`, and `tests/`. Legacy platform features and migrated frontend applications are identified in [Provenance](docs/PROVENANCE.md) and are not claimed as original research work.
+1. `static_weighted` reads only immutable per-model priors from `experiments/config/static_model_priors.json`;
+2. `evalroute_feedback` reads training-derived `profile_*` fields and calls the production `ExplainableRouter` directly;
+3. selection never reads held-out `observed_*` fields, while final metrics read only `observed_*` fields.
 
 ```mermaid
 flowchart LR
-  D["Versioned evaluation observations"] --> P["Capability profiles"]
-  R["Request + constraints"] --> F["Hard-constraint filter"]
-  P --> F
-  F --> S["Stable multi-objective scoring"]
-  S --> X["Selection + explanation"]
-  X --> O["Observed quality / latency / cost / success"]
-  O --> D
+  P["Immutable model priors"] --> S["Static weighted baseline"]
+  T["Training-derived profile_*"] --> R["Production ExplainableRouter"]
+  Q["Request context + constraints"] --> R
+  S --> C["Policy selections"]
+  R --> C
+  C --> O["Held-out observed_* metrics"]
 ```
-
-## Project status
-
-| Stage | Scope |
-|---|---|
-| Implemented | Dependency-free router, offline policy evaluation, audit explanations, synthetic reproducibility suite, and focused tests |
-| Experimental | FastAPI profile feedback, AI-as-a-judge signal, database-backed decision/outcome audit, and provider fallback |
-| Planned | A licensed 200–500 example multilingual benchmark, 3–5 real models, blinded human audit, held-out weight selection, bootstrap intervals, and learned policies |
 
 ## 30-second reproduction
 
@@ -52,7 +36,7 @@ python -m unittest discover -s tests/gateway -p test_routing.py -v
 python -m unittest discover -s tests/experiments -v
 ```
 
-On Windows, the complete dependency-free research verification is:
+On Windows, run the complete research verification with:
 
 ```powershell
 .\scripts\verify-research.ps1
@@ -60,62 +44,61 @@ On Windows, the complete dependency-free research verification is:
 
 Generated evidence is written to `experiments/results/demo-results.json` and `experiments/results/demo-results.md`.
 
-To evaluate a real exported observation file:
+## Experiment input contract
+
+Each JSONL row is one request/model pair. Pre-selection information and post-invocation outcomes are intentionally separate:
+
+```json
+{
+  "request": "r1",
+  "task": "code",
+  "model": "model-a",
+  "profile_quality": 0.82,
+  "profile_latency_ms": 720,
+  "profile_cost": 0.009,
+  "profile_reliability": 0.97,
+  "profile_sample_count": 50,
+  "profile_age_days": 3,
+  "observed_quality": 0.86,
+  "observed_latency_ms": 810,
+  "observed_cost": 0.011,
+  "observed_success": 1
+}
+```
+
+Legacy rows containing only `quality`, `latency_ms`, `cost`, and `success` are rejected. Empirical input also requires a separate static-prior configuration:
 
 ```powershell
 python experiments/run_experiments.py `
   --input path/to/observations.jsonl `
+  --static-priors path/to/static_model_priors.json `
   --output-dir experiments/results/empirical `
-  --evidence-level empirical `
-  --repeats 30
+  --evidence-level empirical
 ```
 
-Each JSONL row must identify a request/task/model and include held-out `quality`, `latency_ms`, `cost`, and `success`. Runs labelled `empirical` must also provide precomputed `profile_quality`, `profile_reliability`, and `profile_sample_count`; the CLI rejects empirical labels without them to reduce held-out outcome leakage. The report records the input SHA-256 hash. The collection protocol and required provenance are documented in [Methodology](docs/METHODOLOGY.md) and the [Dataset Card](benchmark/DATASET_CARD.md).
-
 ## Synthetic smoke-test output
-
-These values are included only so a reviewer can confirm what the command should produce:
 
 | Policy | Quality | Mean latency | Mean cost | Success | Constraint violations |
 |---|---:|---:|---:|---:|---:|
 | Fixed strongest | 0.8450 | 812.50 ms | 0.012000 | 1.0000 | 0.7500 |
 | Fixed cheapest | 0.7100 | 265.00 ms | 0.002000 | 0.7500 | 0.0000 |
-| Static weighted | 0.7925 | 382.50 ms | 0.004000 | 1.0000 | 0.0000 |
+| Static weighted | 0.8275 | 462.50 ms | 0.005500 | 1.0000 | 0.0000 |
 | EvalRoute feedback | 0.7925 | 382.50 ms | 0.004000 | 1.0000 | 0.0000 |
 
-On this tiny fixture, feedback routing ties static weighted routing. This is a useful negative result: the fixture validates mechanics, not research superiority.
+The table shows different selections under the default constraints, and a focused regression case makes every candidate feasible and still confirms different selections. This demonstrates that the implementations are distinct; it does not support H1 or claim that feedback is better.
 
-## Repository map
+## Contribution boundary
 
-```text
-benchmark/              Dataset schema, starter data, and Dataset Card
-experiments/            Offline policies, ablations, drift tests, and reports
-tests/                  Focused routing, evaluation, experiment, and feedback tests
-services/gateway/       Integrated FastAPI gateway; research router lives here
-services/evaluation/    Integrated evaluation service; profile scoring lives here
-docs/                   Architecture, method, results, provenance, and report
-sdk/python/             Optional client SDK
-```
+The original research work covers the seven-dimensional explainable router, stable reference scoring, task-specific capability profiles, confidence/freshness adjustment, audit explanations, leakage-safe policy evaluation, sensitivity/ablation/failure studies, tests, and methodology.
 
-## Full integrated prototype
-
-The optional two-service prototype requires Python 3.10+, Node.js 22+, Docker Desktop, MySQL, and Redis:
-
-```powershell
-Copy-Item .env.example .env
-Copy-Item services/gateway/.env.example services/gateway/.env
-Copy-Item services/evaluation/.env.example services/evaluation/.env
-.\scripts\setup-local.ps1
-.\scripts\start.ps1
-```
-
-Use test-only credentials and never commit `.env` files. Run the broader local checks with `.\scripts\verify.ps1`. This integrated path has not completed production security, load, recovery, or provider-compatibility validation.
+The gateway, evaluation service, database, SDK, frontends, deployment configuration, and historical platform features form an optional integration prototype. Project origins and attribution are recorded in [Project Origins and Contributions](docs/PROVENANCE.md).
 
 ## Documentation
 
+- [Focused research map](research/README.md)
 - [Core algorithm](docs/CORE_MODULE.md)
 - [Architecture](docs/ARCHITECTURE.md)
 - [Evaluation methodology](docs/METHODOLOGY.md)
 - [Results and interpretation](docs/RESULTS.md)
 - [Technical report](docs/TECHNICAL_REPORT.md)
-- [Provenance and licensing](docs/PROVENANCE.md)
+- [Project origins and contributions](docs/PROVENANCE.md)

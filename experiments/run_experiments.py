@@ -11,6 +11,7 @@ from routing_experiments import (
     Constraints,
     References,
     load_observations,
+    load_static_priors,
     run_suite,
     validate_empirical_profiles,
 )
@@ -33,6 +34,10 @@ def markdown_report(payload: dict) -> str:
         f"- Requests: {metadata['requests']}",
         f"- Models: {', '.join(metadata['models'])}",
         f"- Repeats: {metadata['repeats']}",
+        f"- Router dimensions: {', '.join(metadata['router_dimensions'])}",
+        f"- Selection inputs: {metadata['selection_fields']}",
+        f"- Metric inputs: {metadata['metric_fields']}",
+        f"- Static-prior SHA-256: {evidence['static_priors_sha256']}",
         "",
         "## Baseline comparison",
         "",
@@ -64,6 +69,12 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--input", type=Path, default=ROOT / "fixtures" / "demo_observations.jsonl")
     parser.add_argument("--output-dir", type=Path, default=ROOT / "results")
+    parser.add_argument(
+        "--static-priors",
+        type=Path,
+        default=ROOT / "config" / "static_model_priors.json",
+        help="Immutable model priors used by static baselines and confidence fallback.",
+    )
     parser.add_argument("--repeats", type=int, default=30)
     parser.add_argument("--latency-reference-ms", type=float, default=1000.0)
     parser.add_argument("--cost-reference", type=float, default=0.01)
@@ -76,11 +87,14 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     args = parse_args()
     input_bytes = args.input.read_bytes()
+    prior_bytes = args.static_priors.read_bytes()
     rows = load_observations(input_bytes.decode("utf-8").splitlines())
+    static_priors = load_static_priors(prior_bytes)
     if args.evidence_level == "empirical":
         validate_empirical_profiles(rows)
     payload = run_suite(
         rows,
+        static_priors=static_priors,
         repeats=args.repeats,
         references=References(args.latency_reference_ms, args.cost_reference),
         constraints=Constraints(args.max_cost, args.max_latency_ms),
@@ -89,6 +103,8 @@ def main() -> None:
         "level": args.evidence_level,
         "source": str(args.input),
         "sha256": hashlib.sha256(input_bytes).hexdigest(),
+        "static_priors_source": str(args.static_priors),
+        "static_priors_sha256": hashlib.sha256(prior_bytes).hexdigest(),
         "warning": (
             "Synthetic fixture output; do not cite as an empirical model benchmark."
             if args.evidence_level == "synthetic_demo"

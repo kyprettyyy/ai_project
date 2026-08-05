@@ -8,6 +8,10 @@
 - Requests: 4
 - Models: model-a, model-b, model-c
 - Repeats: 30
+- Router dimensions: quality, latency, cost, reliability, task, context, budget
+- Selection inputs: profile_* and immutable static priors only
+- Metric inputs: observed_* only
+- Static-prior SHA-256: b91cb166ec65c4bb04d020c9338357c0c887eefa8e623c5a1d9508b881c31ba8
 
 ## Baseline comparison
 
@@ -19,7 +23,7 @@
 | round_robin | 0.8500 | 615.00 | 870.00 | 0.008250 | 1.0000 | 0.5000 | 0.6753 |
 | cost_first | 0.7100 | 265.00 | 300.00 | 0.002000 | 0.7500 | 0.0000 | 0.6502 |
 | latency_first | 0.7100 | 265.00 | 300.00 | 0.002000 | 0.7500 | 0.0000 | 0.6502 |
-| static_weighted | 0.7925 | 382.50 | 560.00 | 0.004000 | 1.0000 | 0.0000 | 0.6951 |
+| static_weighted | 0.8275 | 462.50 | 560.00 | 0.005500 | 1.0000 | 0.0000 | 0.7031 |
 | evalroute_feedback | 0.7925 | 382.50 | 560.00 | 0.004000 | 1.0000 | 0.0000 | 0.6951 |
 
 ## Weight Sensitivity
@@ -28,16 +32,17 @@
 {
   "quality_first": {
     "requests": 4,
-    "mean_quality": 0.8275,
-    "mean_latency_ms": 462.5,
+    "mean_quality": 0.8125,
+    "mean_latency_ms": 420.0,
     "p95_latency_ms": 560.0,
-    "mean_cost": 0.0055,
-    "total_cost": 0.022,
+    "mean_cost": 0.00475,
+    "total_cost": 0.019,
     "success_rate": 1.0,
     "constraint_violation_rate": 0.0,
-    "utility": 0.7031,
+    "utility": 0.702,
     "model_distribution": {
-      "model-b": 1.0
+      "model-b": 0.75,
+      "model-c": 0.25
     }
   },
   "balanced": {
@@ -57,32 +62,30 @@
   },
   "cost_first": {
     "requests": 4,
-    "mean_quality": 0.7375,
-    "mean_latency_ms": 317.5,
-    "p95_latency_ms": 500.0,
-    "mean_cost": 0.003,
-    "total_cost": 0.012,
-    "success_rate": 1.0,
+    "mean_quality": 0.71,
+    "mean_latency_ms": 265.0,
+    "p95_latency_ms": 300.0,
+    "mean_cost": 0.002,
+    "total_cost": 0.008,
+    "success_rate": 0.75,
     "constraint_violation_rate": 0.0,
-    "utility": 0.6599,
+    "utility": 0.6502,
     "model_distribution": {
-      "model-b": 0.25,
-      "model-c": 0.75
+      "model-c": 1.0
     }
   },
   "latency_first": {
     "requests": 4,
-    "mean_quality": 0.7375,
-    "mean_latency_ms": 317.5,
-    "p95_latency_ms": 500.0,
-    "mean_cost": 0.003,
-    "total_cost": 0.012,
-    "success_rate": 1.0,
+    "mean_quality": 0.71,
+    "mean_latency_ms": 265.0,
+    "p95_latency_ms": 300.0,
+    "mean_cost": 0.002,
+    "total_cost": 0.008,
+    "success_rate": 0.75,
     "constraint_violation_rate": 0.0,
-    "utility": 0.6599,
+    "utility": 0.6502,
     "model_distribution": {
-      "model-b": 0.25,
-      "model-c": 0.75
+      "model-c": 1.0
     }
   },
   "reliability_first": {
@@ -109,61 +112,105 @@
 {
   "without_quality": {
     "requests": 4,
-    "mean_quality": 0.7375,
-    "mean_latency_ms": 317.5,
-    "p95_latency_ms": 500.0,
-    "mean_cost": 0.003,
-    "total_cost": 0.012,
-    "success_rate": 1.0,
+    "mean_quality": 0.71,
+    "mean_latency_ms": 265.0,
+    "p95_latency_ms": 300.0,
+    "mean_cost": 0.002,
+    "total_cost": 0.008,
+    "success_rate": 0.75,
     "constraint_violation_rate": 0.0,
-    "utility": 0.6599,
+    "utility": 0.6502,
     "model_distribution": {
-      "model-b": 0.25,
-      "model-c": 0.75
+      "model-c": 1.0
     }
   },
   "without_latency": {
     "requests": 4,
-    "mean_quality": 0.8125,
-    "mean_latency_ms": 420.0,
+    "mean_quality": 0.7925,
+    "mean_latency_ms": 382.5,
     "p95_latency_ms": 560.0,
-    "mean_cost": 0.00475,
-    "total_cost": 0.019,
+    "mean_cost": 0.004,
+    "total_cost": 0.016,
     "success_rate": 1.0,
     "constraint_violation_rate": 0.0,
-    "utility": 0.702,
+    "utility": 0.6951,
     "model_distribution": {
-      "model-b": 0.75,
-      "model-c": 0.25
+      "model-b": 0.5,
+      "model-c": 0.5
     }
   },
   "without_cost": {
     "requests": 4,
-    "mean_quality": 0.8275,
-    "mean_latency_ms": 462.5,
+    "mean_quality": 0.7925,
+    "mean_latency_ms": 382.5,
     "p95_latency_ms": 560.0,
-    "mean_cost": 0.0055,
-    "total_cost": 0.022,
+    "mean_cost": 0.004,
+    "total_cost": 0.016,
     "success_rate": 1.0,
     "constraint_violation_rate": 0.0,
-    "utility": 0.7031,
+    "utility": 0.6951,
     "model_distribution": {
-      "model-b": 1.0
+      "model-b": 0.5,
+      "model-c": 0.5
     }
   },
   "without_reliability": {
     "requests": 4,
-    "mean_quality": 0.765,
-    "mean_latency_ms": 330.0,
-    "p95_latency_ms": 560.0,
-    "mean_cost": 0.003,
-    "total_cost": 0.012,
+    "mean_quality": 0.71,
+    "mean_latency_ms": 265.0,
+    "p95_latency_ms": 300.0,
+    "mean_cost": 0.002,
+    "total_cost": 0.008,
     "success_rate": 0.75,
     "constraint_violation_rate": 0.0,
-    "utility": 0.6855,
+    "utility": 0.6502,
     "model_distribution": {
-      "model-b": 0.25,
-      "model-c": 0.75
+      "model-c": 1.0
+    }
+  },
+  "without_task": {
+    "requests": 4,
+    "mean_quality": 0.7925,
+    "mean_latency_ms": 382.5,
+    "p95_latency_ms": 560.0,
+    "mean_cost": 0.004,
+    "total_cost": 0.016,
+    "success_rate": 1.0,
+    "constraint_violation_rate": 0.0,
+    "utility": 0.6951,
+    "model_distribution": {
+      "model-b": 0.5,
+      "model-c": 0.5
+    }
+  },
+  "without_context": {
+    "requests": 4,
+    "mean_quality": 0.7925,
+    "mean_latency_ms": 382.5,
+    "p95_latency_ms": 560.0,
+    "mean_cost": 0.004,
+    "total_cost": 0.016,
+    "success_rate": 1.0,
+    "constraint_violation_rate": 0.0,
+    "utility": 0.6951,
+    "model_distribution": {
+      "model-b": 0.5,
+      "model-c": 0.5
+    }
+  },
+  "without_budget": {
+    "requests": 4,
+    "mean_quality": 0.7925,
+    "mean_latency_ms": 382.5,
+    "p95_latency_ms": 560.0,
+    "mean_cost": 0.004,
+    "total_cost": 0.016,
+    "success_rate": 1.0,
+    "constraint_violation_rate": 0.0,
+    "utility": 0.6951,
+    "model_distribution": {
+      "model-b": 0.5,
+      "model-c": 0.5
     }
   }
 }
@@ -246,32 +293,30 @@
   },
   "model-b_stale_profile": {
     "requests": 4,
-    "mean_quality": 0.7375,
-    "mean_latency_ms": 317.5,
-    "p95_latency_ms": 500.0,
-    "mean_cost": 0.003,
-    "total_cost": 0.012,
-    "success_rate": 1.0,
+    "mean_quality": 0.71,
+    "mean_latency_ms": 265.0,
+    "p95_latency_ms": 300.0,
+    "mean_cost": 0.002,
+    "total_cost": 0.008,
+    "success_rate": 0.75,
     "constraint_violation_rate": 0.0,
-    "utility": 0.6599,
+    "utility": 0.6502,
     "model_distribution": {
-      "model-b": 0.25,
-      "model-c": 0.75
+      "model-c": 1.0
     }
   },
   "model-b_low_sample": {
     "requests": 4,
-    "mean_quality": 0.7375,
-    "mean_latency_ms": 317.5,
-    "p95_latency_ms": 500.0,
-    "mean_cost": 0.003,
-    "total_cost": 0.012,
-    "success_rate": 1.0,
+    "mean_quality": 0.71,
+    "mean_latency_ms": 265.0,
+    "p95_latency_ms": 300.0,
+    "mean_cost": 0.002,
+    "total_cost": 0.008,
+    "success_rate": 0.75,
     "constraint_violation_rate": 0.0,
-    "utility": 0.6599,
+    "utility": 0.6502,
     "model_distribution": {
-      "model-b": 0.25,
-      "model-c": 0.75
+      "model-c": 1.0
     }
   }
 }

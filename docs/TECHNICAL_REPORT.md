@@ -12,7 +12,7 @@ EvalRoute therefore separates hard constraints from soft objectives. This separa
 
 ## 2. System boundary
 
-The research path contains three components. The evaluation scorer combines available correctness, human, and AI-judge signals and aggregates them into task/model profiles. The pure routing engine converts a request and a set of candidate signals into a ranked plan. The offline harness replays complete request/model observations to compare policies.
+The research path contains three components. The evaluation scorer combines available correctness, human, and AI-judge signals and aggregates them into task/model profiles. The pure routing engine converts a request and a set of candidate signals into a ranked plan. The offline harness compares policies while separating pre-selection profiles from post-invocation outcomes. A top-level `research/` map provides a narrow review path through these components.
 
 An optional FastAPI integration stores profiles, accepts OpenAI-compatible chat requests, records decisions, invokes providers, and joins estimated decisions with observed outcomes. MySQL, Redis, SDK, deployment scripts, legacy platform features, and migrated Vue interfaces are supporting integration context rather than the core research contribution.
 
@@ -38,23 +38,25 @@ Evaluation traffic must pin an explicit model. If it uses adaptive selection, th
 
 ## 6. Experimental design
 
-The offline harness compares fixed strongest, fixed cheapest, random, round-robin, cost-first, latency-first, static weighted, and feedback routing. It reports quality, mean and P95 latency, request and total cost, success, constraint violations, model distribution, and auxiliary utility. Five weight presets test objective sensitivity. Four ablations remove one primary signal at a time. Failure and drift scenarios cover unavailability, latency and price spikes, quality degradation, stale profiles, and one-sample profiles.
+The offline harness compares fixed strongest, fixed cheapest, random, round-robin, cost-first, latency-first, static weighted, and feedback routing. Static weighted uses a separately frozen four-signal model-prior configuration. Feedback routing converts training-derived profiles to production `CandidateSignals` and calls the same seven-dimensional `ExplainableRouter` used online. Five weight presets test objective sensitivity, and seven ablations remove one production-router dimension at a time. Failure and drift scenarios cover unavailability, latency and price spikes, quality degradation, stale profiles, and one-sample profiles.
+
+Each observation has two namespaces. `profile_*` contains only information available before selection; `observed_*` contains the held-out quality, latency, cost, and success used after selection. Neither policy selection nor baseline construction reads `observed_*`. Conversely, aggregate metrics and Pareto analysis read only `observed_*`. Immutable prior and observation files are hashed separately in the report.
 
 Random routing is repeated under deterministic seeds, and the harness reports mean, standard deviation, and a normal-approximation 95% interval. An empirical report should add request-level bootstrap intervals and paired comparisons. Pareto analysis identifies model-level trade-offs without collapsing quality, latency, and cost into a single subjective utility.
 
 ## 7. Verification
 
-Focused tests cover empty and single candidate sets, all-candidate rejection, cost/context/capability/quality/latency/reliability constraints, invalid and zero weights, deterministic ties, input-order invariance, zero-cost models, candidate-set-independent scoring, sparse and stale profiles, capability parsing, and token estimation. Experiment tests cover schema validation, reproducible random seeds, all policies, constraint enforcement, P95, violations, distribution, confidence summaries, Pareto dominance, and suite completeness. Evaluation and integration tests cover score aggregation and a profile update changing a routing decision.
+Focused tests cover empty and single candidate sets, all-candidate rejection, cost/context/capability/quality/latency/reliability constraints, invalid and zero weights, deterministic ties, input-order invariance, zero-cost models, candidate-set-independent scoring, sparse and stale profiles, capability parsing, and token estimation. Experiment tests additionally prove policy separation on feasible candidates, complete pre/post schema validation, immutable-prior coverage, selection invariance under adversarial held-out-outcome changes, observed-only aggregation, all seven production dimensions, reproducible random seeds, constraints, P95, Pareto dominance, and suite completeness. Evaluation and integration tests cover score aggregation and a profile update changing a routing decision.
 
-The dependency-free research verifier runs 36 checks and regenerates the synthetic report. Four additional gateway request/authentication checks bring the focused research-path total to 40 when service dependencies are installed. Broader CI also compiles the services, tests the SDK, and builds the migrated frontends, but these checks do not establish production readiness.
+The dependency-free research verifier runs the router, evaluation, experiment, and feedback-loop suites and regenerates the synthetic report. Broader CI also compiles the services, tests the SDK, and builds the frontends, but these checks do not establish production readiness.
 
 ## 8. Current result
 
-On the 12-row synthetic fixture, feedback routing and static weighted routing tie. This is reported as a negative result. It shows that the fixture lacks enough independent information to demonstrate a feedback advantage. Fixed strongest achieves higher quality but violates the configured cost constraint on most requests; fixed cheapest is cheaper and faster but has lower quality and success. These values illustrate metric behavior only.
+On the 12-row synthetic fixture, static weighted and feedback routing now make different choices. Static routing uses only immutable priors; feedback routing uses training-derived profiles through the production engine. Feedback is cheaper and faster but lower-quality than static on this fixture. This demonstrates policy separation and metric behavior only, not empirical superiority.
 
 ## 9. Limitations and threats to validity
 
-The main limitation is the absence of a sufficiently large, licensed, held-out real-model benchmark. AI judges may be biased by verbosity, order, and model family. Provider prices and latency change over time. The reference transforms and fusion weights are heuristic. Latency measurements depend on geography and load. Synthetic failure injection is not equivalent to a production incident. The integrated services have not completed security, load, recovery, or cross-provider streaming validation. Third-party frontend licensing and repository provenance remain release blockers.
+The main limitation is the absence of a sufficiently large, held-out real-model benchmark. AI judges may be biased by verbosity, order, and model family. Provider prices and latency change over time. The reference transforms, immutable baseline priors, and fusion weights are heuristic. Latency measurements depend on geography and load. Synthetic failure injection is not equivalent to a production incident. The integrated services have not completed security, load, recovery, or cross-provider streaming validation.
 
 ## 10. Future work
 

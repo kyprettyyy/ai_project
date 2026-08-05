@@ -30,7 +30,7 @@ Profile confidence combines sample sufficiency and exponential freshness decay:
 
 `confidence = sample_confidence * freshness`
 
-Quality is shrunk toward a neutral 0.5 prior when confidence is low, with an additional bounded uncertainty penalty. Profile latency, cost, and reliability are blended with live/reference signals using the same confidence.
+Quality, latency, cost, and reliability profiles are all blended with request-time or explicitly configured prior signals using the same confidence. Quality defaults to a neutral 0.5 prior when no explicit prior is supplied and retains an additional bounded uncertainty penalty. The offline adapter supplies the separately frozen static priors; the database adapter retains the gateway's live/reference fallbacks.
 
 ## Ranking score
 

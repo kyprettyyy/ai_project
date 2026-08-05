@@ -109,7 +109,6 @@ Copy-Item services/evaluation/.env.example services/evaluation/.env
 .\scripts\start.ps1
 ```
 
-Use test-only credentials and never commit `.env` files. Run the broader local checks with `.\scripts\verify.ps1`. This integrated path has not completed production security, load, recovery, or provider-compatibility validation.
 
 ## Documentation
 

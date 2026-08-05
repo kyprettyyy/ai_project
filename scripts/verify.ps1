@@ -13,6 +13,7 @@ try {
     & $gatewayPython -m unittest discover -s services/gateway/tests -v
     & $evaluationPython -m unittest discover -s services/evaluation/tests -v
     & $gatewayPython -m unittest discover -s sdk/python/tests -v
+    & $gatewayPython -m unittest discover -s tests/experiments -v
     & $gatewayPython -m unittest discover -s tests/gateway -v
     & $evaluationPython -m unittest discover -s tests/evaluation -v
     & $gatewayPython -m unittest discover -s tests/integration -v

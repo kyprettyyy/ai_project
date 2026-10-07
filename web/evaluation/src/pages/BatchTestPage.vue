@@ -37,12 +37,29 @@
             show-search
             :filter-option="false"
             @search="handleSearchModel"
+            @dropdown-visible-change="(visible: boolean) => { if (visible) loadModels() }"
             @popup-scroll="handlePopupScroll"
           >
             <a-select-option v-for="model in modelOptions" :key="model.value" :value="model.value">
               {{ model.label }}
             </a-select-option>
           </a-select>
+        </a-form-item>
+
+        <a-form-item label="评测任务类型" name="taskType">
+          <a-select v-model:value="form.taskType">
+            <a-select-option value="general">通用</a-select-option>
+            <a-select-option value="code">编程</a-select-option>
+            <a-select-option value="math">数学</a-select-option>
+            <a-select-option value="reasoning">推理</a-select-option>
+            <a-select-option value="summarization">总结</a-select-option>
+            <a-select-option value="classification">分类</a-select-option>
+            <a-select-option value="extraction">信息提取</a-select-option>
+          </a-select>
+          <div style="font-size: 12px; color: #999; margin-top: 4px">
+            批次完成后，系统按模型和任务类型累计评测数据；有评分样本达到配置门槛后自动更新能力画像。
+            未启用 AI 评分时，可在测试完成后补充人工评分。
+          </div>
         </a-form-item>
 
         <a-divider>高级参数配置（可选）</a-divider>
@@ -219,6 +236,7 @@
             </div>
           </template>
           <template v-else-if="column.key === 'outputText'">
+              <a-tag v-if="!record.outputText?.trim()" color="orange">空回答</a-tag>
             <div class="output-cell" @click="showFullContent(record)">
               <a-typography-paragraph
                 :ellipsis="{ rows: 2, expandable: false }"
@@ -380,6 +398,7 @@ const form = ref<CreateBatchTestRequest>({
   name: '',
   sceneId: '',
   models: [],
+  taskType: 'general',
   temperature: undefined,
   topP: undefined,
   maxTokens: undefined,
@@ -445,7 +464,7 @@ const resultColumns = [
     width: 220
   },
   {
-    title: '用户评分',
+    title: '人工评测评分',
     key: 'userRating',
     width: 150
   },
@@ -865,6 +884,7 @@ const loadTaskConfig = async (taskId: string) => {
           form.value.frequencyPenalty = config.frequencyPenalty
           form.value.presencePenalty = config.presencePenalty
           form.value.enableAiScoring = config.enableAiScoring || false
+          form.value.taskType = config.taskType || 'general'
         } catch (e) {
           console.warn('解析任务配置失败:', e)
         }

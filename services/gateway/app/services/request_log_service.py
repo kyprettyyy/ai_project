@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime, time, timedelta
+from datetime import date, datetime, time, timedelta, timezone
+import json
 from decimal import Decimal
 
 from sqlalchemy import func, select
@@ -43,6 +44,9 @@ class RequestLogService:
         evaluation_run_id: str | None = None,
         task_type: str | None = None,
         provider_name: str | None = None,
+        cost_currency: str = "UNKNOWN",
+        search_enabled: bool = False,
+        is_byok: bool = False,
     ) -> RequestLog:
         final_cost = cost
         if final_cost is None and status == REQUEST_STATUS_SUCCESS and model_id is not None:
@@ -51,6 +55,26 @@ class RequestLogService:
                 prompt_tokens=prompt_tokens,
                 completion_tokens=completion_tokens,
             )
+        from app.models.model import Model
+        from app.utils.catalog_cost import estimate_cost
+        model = await self.db.get(Model, model_id) if model_id is not None else None
+        catalog_cost, snapshot = estimate_cost(prompt_tokens, completion_tokens,
+            model.input_price * 1000 if model else None,
+            model.output_price * 1000 if model else None,
+            model.price_currency if model else "UNKNOWN",
+            model.pricing_config if model else None, datetime.now(timezone.utc))
+        cache_hit = routing_strategy == 'cache'
+        usage_known = cache_hit or total_tokens > 0
+        if not usage_known:
+            catalog_cost = None
+            snapshot['status'] = 'usage_unavailable'
+        elif cache_hit:
+            catalog_cost = Decimal('0')
+            snapshot['status'] = 'cache_hit'
+        snapshot.update(usageKnown=usage_known,
+            trafficType='evaluation' if evaluation_run_id or task_type == 'evaluation_judge' else 'online',
+            credentialSource='byok' if is_byok else 'platform',
+            nativeSearch=search_enabled, costCoverage='token_only')
         entity = RequestLog(
             trace_id=trace_id,
             evaluation_run_id=evaluation_run_id,
@@ -67,6 +91,9 @@ class RequestLogService:
             completion_tokens=completion_tokens,
             total_tokens=total_tokens,
             cost=final_cost or Decimal("0"),
+            cost_currency=snapshot["currency"],
+            catalog_cost=catalog_cost,
+            pricing_snapshot=json.dumps(snapshot),
             duration=duration,
             status=status,
             error_message=error_message,

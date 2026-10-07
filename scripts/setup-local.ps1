@@ -17,6 +17,8 @@ if (-not (Test-Path -LiteralPath (Join-Path $evaluationDir '.venv\Scripts\python
     & $pythonCommand -m venv (Join-Path $evaluationDir '.venv')
 }
 & (Join-Path $evaluationDir '.venv\Scripts\python.exe') -m pip install -r (Join-Path $evaluationDir 'requirements.txt')
+& (Join-Path $evaluationDir '.venv\Scripts\python.exe') -m pip install -r (Join-Path $projectRoot 'tests\requirements.txt')
+& (Join-Path $gatewayDir '.venv\Scripts\python.exe') -m pip install -r (Join-Path $projectRoot 'tests\requirements.txt')
 
 Push-Location $gatewayWebDir
 try {

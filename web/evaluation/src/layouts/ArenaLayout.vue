@@ -34,6 +34,9 @@
           <BarChartOutlined />
           <span>数据分析</span>
         </button>
+        <button class="nav-btn" @click="router.push('/online-feedback')">
+          <BarChartOutlined /><span>线上用户反馈</span>
+        </button>
       </nav>
 
       <!-- 历史对话 -->

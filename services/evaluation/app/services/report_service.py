@@ -3,6 +3,8 @@
 """
 import json
 import logging
+import httpx
+from app.core.config import get_settings
 from collections import defaultdict
 from typing import List, Optional
 
@@ -25,7 +27,7 @@ from app.schemas.report import (
 
 logger = logging.getLogger(__name__)
 
-RADAR_DIMENSIONS = ["准确性", "完整性", "速度", "成本效率", "用户满意度"]
+RADAR_DIMENSIONS = ["准确性", "完整性", "速度", "成本效率", "人工评测评分"]
 SPEED_NORMALIZE_DIVISOR = 10000.0
 COST_EFFICIENCY_FACTOR = 100.0
 COST_EFFICIENCY_OFFSET = 0.01
@@ -76,7 +78,17 @@ class ReportService:
         if not test_results:
             raise BusinessException(ErrorCode.NOT_FOUND_ERROR, "该任务暂无测试结果")
 
-        summary = ReportService._calculate_summary(test_results)
+        judge = None
+        try:
+            settings = get_settings()
+            async with httpx.AsyncClient(timeout=5) as client:
+                response = await client.get(settings.GATEWAY_BASE_URL.rstrip('/') + '/internal/task-costs',
+                    params={'taskId': task.id}, headers={'X-Internal-Token': settings.GATEWAY_INTERNAL_TOKEN})
+                response.raise_for_status()
+                judge = response.json()
+        except (httpx.HTTPError, ValueError):
+            logger.warning('Task judge costs unavailable: %s', task.id)
+        summary = ReportService._calculate_summary(test_results, judge)
         model_statistics = ReportService._calculate_model_statistics(test_results)
         radar_chart = ReportService._generate_radar_chart(test_results, model_statistics)
         bar_chart = ReportService._generate_bar_chart(model_statistics)
@@ -93,11 +105,25 @@ class ReportService:
         )
 
     @staticmethod
-    def _calculate_summary(test_results: List[TestResult]) -> ReportSummaryVO:
+    def _calculate_summary(test_results: List[TestResult], judge=None) -> ReportSummaryVO:
         """计算报告摘要"""
-        total_cost_float = sum(
-            float(r.cost) for r in test_results if r.cost is not None
-        ) or None
+        totals = defaultdict(float)
+        missing = 0
+        for r in test_results:
+            currency = getattr(r, 'cost_currency', 'UNKNOWN')
+            if r.cost is None or currency not in ('CNY', 'USD'):
+                missing += 1
+            else:
+                totals[currency] += float(r.cost)
+        answer_totals = dict(totals)
+        needs_judge = any(r.ai_score and (r.output_text or '').strip() for r in test_results)
+        judge_known = not needs_judge or bool(judge and judge.get('callCount'))
+        for currency, value in (judge or {}).get('totalsByCurrency', {}).items():
+            totals[currency] += value
+        currency = next(iter(totals)) if len(totals) == 1 else 'UNKNOWN'
+        incomplete = bool(missing or not judge_known or (judge or {}).get('missingPriceCount'))
+        known = totals.get(currency) if currency != 'UNKNOWN' else None
+        total_cost_float = known if not incomplete else None
 
         response_times = [r.response_time_ms for r in test_results if r.response_time_ms is not None]
         avg_response_ms = sum(response_times) / len(response_times) if response_times else None
@@ -111,6 +137,12 @@ class ReportService:
         model_names = {r.model_name for r in test_results}
         return ReportSummaryVO(
             total_cost=total_cost_float,
+            cost_currency=currency,
+            answer_cost=answer_totals.get(currency) if not missing else None,
+            judge_cost=(judge or {}).get('totalsByCurrency', {}).get(currency, 0) if judge_known and not (judge or {}).get('missingPriceCount') else None,
+            known_cost=known, cost_totals=dict(totals), cost_incomplete=incomplete,
+            judge_tokens=(judge or {}).get('tokens') if judge_known else None,
+            cost_note='目录价估算；不含缓存折扣、免费额度及优惠。' + ('费用未完整统计；旧打分调用无法按任务追溯。' if incomplete else ''),
             avg_response_time_ms=avg_response_ms,
             total_tokens=total_tokens,
             total_results=len(test_results),
@@ -142,7 +174,11 @@ class ReportService:
             total_cost_float = sum(
                 float(r.cost) for r in model_results if r.cost is not None
             )
-            avg_cost = total_cost_float / count if count else None
+            currencies = {getattr(r, 'cost_currency', 'UNKNOWN') for r in model_results}
+            currency = next(iter(currencies)) if len(currencies) == 1 else 'UNKNOWN'
+            if currency not in ('CNY', 'USD') or any(r.cost is None for r in model_results):
+                total_cost_float = None
+            avg_cost = total_cost_float / count if count and total_cost_float is not None else None
 
             user_ratings = [r.user_rating for r in model_results if r.user_rating is not None]
             avg_user_rating = sum(user_ratings) / len(user_ratings) if user_ratings else None
@@ -164,7 +200,10 @@ class ReportService:
             statistics_list.append(
                 ModelStatisticsVO(
                     model_name=model_name,
+                    cost_currency=currency,
                     test_count=count,
+                    empty_count=sum(not (r.output_text or "").strip() for r in model_results),
+                    scored_count=sum(bool(r.ai_score) and bool((r.output_text or "").strip()) for r in model_results),
                     avg_response_time_ms=avg_response_ms,
                     avg_input_tokens=avg_input,
                     avg_output_tokens=avg_output,
@@ -182,14 +221,12 @@ class ReportService:
         test_results: List[TestResult],
         model_statistics: List[ModelStatisticsVO],
     ) -> RadarChartDataVO:
-        """生成雷达图数据（准确性、完整性、速度、成本效率、用户满意度）"""
+        """生成雷达图数据（准确性、完整性、速度、成本效率、人工评测评分）"""
         series_list: List[RadarSeriesVO] = []
         for stat in model_statistics:
-            accuracy = stat.avg_ai_score if stat.avg_ai_score is not None else 0.0
-            accuracy_norm = ReportService._normalize_score(accuracy, 0.0, 100.0)
+            accuracy_norm = ReportService._dimension_average(test_results, stat.model_name, "accuracy", 30)
 
-            completeness = ReportService._calculate_completeness(test_results, stat.model_name)
-            completeness_norm = ReportService._normalize_score(completeness, 0.0, COMPLETENESS_MAX)
+            completeness_norm = ReportService._dimension_average(test_results, stat.model_name, "completeness", 20)
 
             speed = 0.0
             if stat.avg_response_time_ms is not None and stat.avg_response_time_ms > 0:
@@ -215,17 +252,25 @@ class ReportService:
         return RadarChartDataVO(dimensions=RADAR_DIMENSIONS, series=series_list)
 
     @staticmethod
-    def _calculate_completeness(test_results: List[TestResult], model_name: str) -> float:
-        """基于输出文本长度和 Token 数计算完整性得分"""
-        model_results = [r for r in test_results if r.model_name == model_name]
-        if not model_results:
-            return 0.0
-        lengths = [len(r.output_text or "") for r in model_results if r.output_text is not None]
-        avg_len = sum(lengths) / len(lengths) if lengths else 0.0
-        tokens = [r.output_tokens for r in model_results if r.output_tokens is not None]
-        avg_tokens = sum(tokens) / len(tokens) if tokens else 0.0
-        completeness = (avg_len / 1000.0 + avg_tokens / 100.0) / 2.0
-        return min(completeness, COMPLETENESS_MAX)
+    def _dimension_average(test_results, model_name, dimension, maximum):
+        values = []
+        for result in test_results:
+            if result.model_name != model_name:
+                continue
+            if not (result.output_text or "").strip():
+                values.append(0.0)
+                continue
+            try:
+                score = json.loads(result.ai_score) if isinstance(result.ai_score, str) else result.ai_score
+                judges = score.get("judges", []) if isinstance(score, dict) else []
+                dimensions = [j.get("scores", {}).get(dimension) for j in judges]
+                valid = [float(v) / maximum * 100 for v in dimensions
+                         if isinstance(v, (int, float)) and 0 <= v <= maximum]
+                if valid:
+                    values.append(sum(valid) / len(valid))
+            except (ValueError, TypeError, AttributeError):
+                continue
+        return sum(values) / len(values) if values else 0.0
 
     @staticmethod
     def _normalize_score(value: float, min_val: float, max_val: float) -> float:
@@ -248,13 +293,13 @@ class ReportService:
             for s in model_statistics
         ]
         total_costs = [
-            s.total_cost if s.total_cost is not None else 0.0
+            s.total_cost if len({x.cost_currency for x in model_statistics}) == 1 else None
             for s in model_statistics
         ]
         series_list = [
             BarSeriesVO(name="平均响应时间", data=response_times, unit="ms"),
             BarSeriesVO(name="总Token消耗", data=total_tokens, unit="tokens"),
-            BarSeriesVO(name="总成本", data=total_costs, unit="USD"),
+            BarSeriesVO(name="总成本", data=total_costs, unit=(model_statistics[0].cost_currency if model_statistics and len({x.cost_currency for x in model_statistics}) == 1 else "不可合并币种")),
         ]
         return BarChartDataVO(categories=categories, series=series_list)
 
@@ -277,6 +322,7 @@ class ReportService:
             input_tokens=r.input_tokens,
             output_tokens=r.output_tokens,
             cost=cost_float,
+            cost_currency=r.cost_currency,
             user_rating=r.user_rating,
             ai_score=ai_score_str,
             create_time=create_str,

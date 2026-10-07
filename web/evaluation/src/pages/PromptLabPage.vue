@@ -33,6 +33,7 @@
           :loading="loadingModels"
           :filter-option="false"
           @search="handleSearchModel"
+            @dropdown-visible-change="(visible: boolean) => { if (visible) loadModels() }"
         />
 
         <span class="vs-label">单模型多提示词对比</span>

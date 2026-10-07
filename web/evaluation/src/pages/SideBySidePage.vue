@@ -1110,6 +1110,10 @@ const handleClearSearch = () => {
 
 // 处理下拉框显示/隐藏
 const handleDropdownChange = (visible: boolean) => {
+  if (visible) {
+    loadModels(undefined, false)
+    return
+  }
   if (!visible && currentSearchText.value) {
     // 下拉框关闭时，如果有搜索词，清空搜索并重新加载完整列表
     console.log('🔄 下拉框关闭，清除搜索状态')
@@ -1693,37 +1697,22 @@ const handleRating = async (msgIndex: number, ratingType: string, winnerModelNam
       ratingType,
       winnerModel,
       loserModel
-    })
+    }, { timeout: 10000 })
 
     if (res.data && res.data.code === 0) {
-      // 直接使用本地数据更新，避免额外请求
-      const msgIndex = messages.value.findIndex(m => m === msg)
-      if (msgIndex !== -1) {
-        messages.value[msgIndex] = {
-          ...messages.value[msgIndex],
-          rating: {
-        id: '',
-        conversationId,
-        messageIndex: msg.messageIndex!,
-        userId: loginUser.value.id,
-        ratingType,
-        winnerModel,
-        loserModel,
+      // Only update the rating; preserve the response objects and input state.
+      msg.rating = {
+        id: '', conversationId, messageIndex: msg.messageIndex!,
+        userId: loginUser.value.id, ratingType, winnerModel, loserModel,
         createTime: new Date().toISOString()
       }
-        }
-      }
-      // 强制触发响应式更新
-      messages.value = [...messages.value]
-      await nextTick()
-      message.success('评分成功')
+      message.success('评分已保存，可以继续输入下一题')
+    } else {
+      message.error(res.data?.message || '评分保存失败，请重试')
     }
   } catch (error) {
     console.error('评分失败:', error)
     message.error('评分失败')
-  } finally {
-    // 发送后清空输入区域的图片（图片仍保留在本轮用户消息中）
-    selectedImageUrls.value = []
   }
 }
 

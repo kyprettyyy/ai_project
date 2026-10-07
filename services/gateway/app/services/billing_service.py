@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from decimal import Decimal
-from datetime import datetime, time
+from datetime import datetime, time, timezone
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -22,11 +22,12 @@ class BillingService:
     def calculate_cost_from_model(model: Model | None, prompt_tokens: int, completion_tokens: int) -> Decimal:
         if model is None:
             return Decimal("0")
-        input_price = Decimal(model.input_price or 0)
-        output_price = Decimal(model.output_price or 0)
-        input_cost = (input_price * Decimal(prompt_tokens)) / TOKENS_PER_UNIT
-        output_cost = (output_price * Decimal(completion_tokens)) / TOKENS_PER_UNIT
-        return (input_cost + output_cost).quantize(Decimal("0.000001"))
+        from app.utils.catalog_cost import estimate_cost
+        cost, _ = estimate_cost(prompt_tokens, completion_tokens,
+            Decimal(model.input_price or 0) * 1000, Decimal(model.output_price or 0) * 1000,
+            getattr(model, "price_currency", "UNKNOWN"), getattr(model, "pricing_config", None),
+            datetime.now(timezone.utc))
+        return cost or Decimal("0")
 
     async def calculate_cost(self, model_id: int | None, prompt_tokens: int, completion_tokens: int) -> Decimal:
         if model_id is None:

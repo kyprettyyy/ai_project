@@ -3,7 +3,7 @@
 from functools import lru_cache
 from urllib.parse import quote_plus
 
-from pydantic import ConfigDict, computed_field
+from pydantic import ConfigDict, Field, computed_field
 from pydantic_settings import BaseSettings
 
 
@@ -31,6 +31,10 @@ class Settings(BaseSettings):
     GATEWAY_API_KEY: str = ""
     GATEWAY_INTERNAL_TOKEN: str = ""
     GATEWAY_TIMEOUT_SECONDS: int = 180
+
+    PROFILE_AUTO_UPDATE_ENABLED: bool = True
+    PROFILE_AUTO_UPDATE_INTERVAL_SECONDS: int = Field(default=30, ge=5)
+    PROFILE_AUTO_UPDATE_MIN_SAMPLES: int = Field(default=30, ge=1)
 
     SESSION_SECRET_KEY: str = ""
     SESSION_MAX_AGE: int = 86400

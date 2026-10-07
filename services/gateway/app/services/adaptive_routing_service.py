@@ -8,10 +8,13 @@ from decimal import Decimal
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.adapter.native_search import supports_native_search
+from app.models.model_provider import ModelProvider
 from app.core.constants import HEALTH_STATUS_DEGRADED, HEALTH_STATUS_HEALTHY, HEALTH_STATUS_UNKNOWN, MODEL_STATUS_ACTIVE
 from app.models.model import Model
 from app.models.model_capability_profile import ModelCapabilityProfile
 from app.models.routing_decision import RoutingDecision
+from app.models.answer_feedback import SatisfactionProfile, PersonalSatisfactionProfile, UserRoutingPreference
 from app.routing.explainable_router import (
     DEFAULT_WEIGHTS,
     CandidateSignals,
@@ -54,10 +57,32 @@ class AdaptiveRoutingService:
             ModelCapabilityProfile.task_type.in_([task_type, "general"]),
         ))).all())
         exact = {(profile.model_id, profile.task_type): profile for profile in profiles}
+        satisfaction = {(p.model_id, p.task_type): p for p in (await self.db.scalars(
+            select(SatisfactionProfile).where(SatisfactionProfile.model_id.in_(model_ids),
+                SatisfactionProfile.task_type.in_([task_type, "general"])))).all()}
+        personal = {}
+        other_priors = {}
+        preference = None
+        if routing_context.user_id:
+            personal = {(p.model_id, p.task_type): p for p in (await self.db.scalars(
+                select(PersonalSatisfactionProfile).where(PersonalSatisfactionProfile.user_id == routing_context.user_id,
+                    PersonalSatisfactionProfile.model_id.in_(model_ids),
+                    PersonalSatisfactionProfile.task_type.in_([task_type, "general"])))).all()}
+            from app.services.personal_routing_service import other_users_priors
+            other_priors = await other_users_priors(self.db, routing_context.user_id, model_ids, [task_type, 'general'])
+            preference = await self.db.get(UserRoutingPreference, routing_context.user_id)
+        if weights is None and preference:
+            routing_context.preference_mode = preference.mode
+            from app.services.personal_routing_service import preference_weights
+            weights = preference_weights(preference.mode)
+        providers = {p.id:p for p in (await self.db.scalars(select(ModelProvider))).all()}
         signals: list[CandidateSignals] = []
         model_by_id = {model.id: model for model in models}
         for model in models:
             profile = exact.get((model.id, task_type)) or exact.get((model.id, "general"))
+            from app.services.personal_routing_service import feedback_for_user
+            user_profile, feedback_source = feedback_for_user(satisfaction, personal, model.id, task_type)
+            prior_mean, prior_strength = other_priors.get((model.id, user_profile.task_type), (.5, 2.)) if feedback_source == '个人反馈' else (.5, 2.)
             signals.append(CandidateSignals(
                 model_id=model.id,
                 model_key=model.model_key,
@@ -67,8 +92,12 @@ class AdaptiveRoutingService:
                 avg_latency_ms=max(0, model.avg_latency or 0),
                 live_success_rate=float(model.success_rate or 0) / 100.0,
                 priority=model.priority or 0,
-                capabilities=parse_capabilities(model.capabilities),
+                capabilities=parse_capabilities(model.capabilities) | ({"native_search"} if model.provider_id in providers and supports_native_search(model, providers[model.provider_id]) else set()),
                 quality_score=float(profile.quality_score) if profile else 0.5,
+                satisfaction_score=(user_profile.positive_count / user_profile.sample_count) if user_profile and user_profile.sample_count else None,
+                satisfaction_samples=user_profile.sample_count if user_profile else 0,
+                satisfaction_source=feedback_source,
+                feedback_prior_mean=prior_mean, feedback_prior_strength=prior_strength,
                 profile_latency_score=float(profile.latency_score) if profile else 0.5,
                 profile_cost_score=float(profile.cost_score) if profile else 0.5,
                 profile_reliability_score=float(profile.reliability_score) if profile else 0.5,
@@ -83,6 +112,8 @@ class AdaptiveRoutingService:
             ))
 
         self.last_plan = self.engine.rank(signals, routing_context, weights)
+        for decision in self.last_plan.candidates:
+            decision.explanation += f"; 路由偏好：{routing_context.preference_mode}（单次权重优先）"
         return [
             (
                 model_by_id[decision.model_id],
@@ -115,7 +146,7 @@ class AdaptiveRoutingService:
             trace_id=trace_id,
             evaluation_run_id=evaluation_run_id,
             task_type=task_type,
-            strategy="adaptive_explainable_v2",
+            strategy="adaptive_explainable_v3_bayesian",
             requested_model=requested_model,
             selected_model_id=selected.id if selected else None,
             selected_model_key=selected.model_key if selected else None,

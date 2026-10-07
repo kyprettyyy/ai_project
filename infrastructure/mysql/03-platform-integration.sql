@@ -1,3 +1,5 @@
+SET NAMES utf8mb4;
+
 USE evalroute_gateway;
 
 CREATE TABLE IF NOT EXISTS model_capability_profile (

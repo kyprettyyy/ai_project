@@ -49,6 +49,7 @@
         <template v-else-if="column.key === 'action'">
           <a-space>
             <a-button type="link" size="small" @click="showAnalysis(record)">分析</a-button>
+            <a-button type="link" size="small" @click="openCredit(record)">发放额度</a-button>
             <a-button type="link" size="small" @click="showQuotaModal(record)"
               >配额</a-button
             >
@@ -73,6 +74,14 @@
       </template>
     </a-table>
 
+    <a-modal v-model:open="creditVisible" title="发放平台额度" :confirm-loading="creditLoading" @ok="submitCredit">
+      <a-alert message="发放额度不代表真实付款，不计入累计充值；操作会记录到用户账单。" type="info" show-icon />
+      <a-form layout="vertical" style="margin-top: 16px">
+        <a-form-item label="用户">{{ creditUser?.userAccount }}</a-form-item>
+        <a-form-item label="发放金额（元）" required><a-input-number v-model:value="creditAmount" :min="0.01" :max="1000000" :precision="2" /></a-form-item>
+        <a-form-item label="原因" required><a-input v-model:value="creditReason" :maxlength="200" placeholder="例如：本地测试额度" /></a-form-item>
+      </a-form>
+    </a-modal>
     <!-- 配额管理弹窗 -->
     <a-modal
       v-model:open="quotaModalVisible"
@@ -150,10 +159,10 @@
           {{ (analysisData.totalTokens || 0).toLocaleString() }} Tokens
         </a-descriptions-item>
         <a-descriptions-item label="累计费用">
-          ¥{{ (analysisData.totalCost || 0).toFixed(6) }}
+          ¥{{ Number(analysisData.totalCost || 0).toFixed(6) }}
         </a-descriptions-item>
         <a-descriptions-item label="今日费用">
-          ¥{{ (analysisData.todayCost || 0).toFixed(6) }}
+          ¥{{ Number(analysisData.todayCost || 0).toFixed(6) }}
         </a-descriptions-item>
       </a-descriptions>
     </a-modal>
@@ -172,6 +181,40 @@ import {
 } from '@/api/userController.ts'
 import { message, Modal } from 'ant-design-vue'
 import dayjs from 'dayjs'
+import request from '@/request'
+
+const creditVisible = ref(false)
+const creditLoading = ref(false)
+const creditUser = ref<API.UserVO>()
+const creditAmount = ref<number>(10)
+const creditReason = ref('')
+const openCredit = (user: API.UserVO) => {
+  creditUser.value = user
+  creditAmount.value = 10
+  creditReason.value = ''
+  creditVisible.value = true
+}
+const submitCredit = async () => {
+  if (creditLoading.value) return
+  if (!creditUser.value?.id || !creditAmount.value || creditAmount.value <= 0 || !creditReason.value.trim()) {
+    message.warning('请输入发放金额和原因')
+    return
+  }
+  creditLoading.value = true
+  try {
+    const res = await request('/balance/admin/credit', { method: 'POST', data: {
+      userId: creditUser.value.id, amount: creditAmount.value, reason: creditReason.value.trim(),
+    } })
+    if (res.data.code !== 0) throw new Error(res.data.message || '发放失败')
+    message.success(`额度已发放，当前余额 ¥${res.data.data.balance}`)
+    creditVisible.value = false
+    await fetchData()
+  } catch (err) {
+    message.error(err instanceof Error ? err.message : '发放失败')
+  } finally {
+    creditLoading.value = false
+  }
+}
 
 const columns = [
   {

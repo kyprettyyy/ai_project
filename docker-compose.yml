@@ -24,6 +24,10 @@ services:
       - ./infrastructure/mysql/02-evaluation-schema.sql:/docker-entrypoint-initdb.d/02-evaluation-schema.sql:ro
       - ./infrastructure/mysql/03-platform-integration.sql:/docker-entrypoint-initdb.d/03-platform-integration.sql:ro
       - ./infrastructure/mysql/04-evaluation-starter.sql:/docker-entrypoint-initdb.d/04-evaluation-starter.sql:ro
+      - ./infrastructure/mysql/05-online-feedback.sql:/docker-entrypoint-initdb.d/05-online-feedback.sql:ro
+      - ./infrastructure/mysql/06-cost-accounting.sql:/docker-entrypoint-initdb.d/06-cost-accounting.sql:ro
+      - ./infrastructure/mysql/07-profile-history.sql:/docker-entrypoint-initdb.d/07-profile-history.sql:ro
+      - ./infrastructure/mysql/08-personal-routing.sql:/docker-entrypoint-initdb.d/08-personal-routing.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "mysqladmin ping -h localhost -uroot -p$${MYSQL_ROOT_PASSWORD} --silent"]
       interval: 10s

@@ -68,6 +68,7 @@ async def update_model(
         model_name=payload.model_name,
         description=payload.description,
         context_length=payload.context_length,
+        price_currency=payload.price_currency,
         input_price=payload.input_price,
         output_price=payload.output_price,
         status=payload.status,

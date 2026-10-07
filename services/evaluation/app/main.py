@@ -13,6 +13,7 @@ from app.core.config import get_settings
 from app.core.errors import BusinessException
 from app.core.logging_config import logger
 from app.api import user, health, test, conversation, model, rating, scene, batch_test, report, prompt_template, prompt_optimization, file, upload, image, statistics, model_profile
+from app.api.online_feedback import router as online_feedback_router
 from app.ws.router import router as ws_router
 from app.middleware.session_middleware import RedisSessionMiddleware
 from app.db.redis_session import RedisSessionBackend
@@ -123,6 +124,7 @@ async def business_exception_handler(request: Request, exc: BusinessException):
 
 
 app.include_router(health.router, prefix="/api")
+app.include_router(online_feedback_router, prefix="/api")
 app.include_router(user.router, prefix="/api")
 app.include_router(test.router, prefix="/api")
 app.include_router(conversation.router, prefix="/api")

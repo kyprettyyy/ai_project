@@ -1,0 +1,2 @@
+# In-memory SQL integration tests; production databases remain MySQL.
+aiosqlite==0.22.1

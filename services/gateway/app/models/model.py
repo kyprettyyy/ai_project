@@ -37,6 +37,8 @@ class Model(Base):
     output_price: Mapped[Decimal] = mapped_column(
         "outputPrice", Numeric(10, 6), nullable=False, default=Decimal("0"), server_default=text("0")
     )
+    price_currency: Mapped[str] = mapped_column("priceCurrency", String(8), nullable=False, default="UNKNOWN", server_default=text("'UNKNOWN'"))
+    pricing_config: Mapped[str | None] = mapped_column("pricingConfig", String(2048), nullable=True)
     status: Mapped[str] = mapped_column(
         String(32), nullable=False, default="active", server_default=text("'active'")
     )

@@ -19,10 +19,8 @@ def load_module(name: str, path: Path):
     return module
 
 
-router_module = load_module(
-    "evalroute_explainable_router",
-    ROOT / "services" / "gateway" / "app" / "routing" / "explainable_router.py",
-)
+sys.path.insert(0, str(ROOT))
+from services.gateway.app.routing import explainable_router as router_module
 scoring_module = load_module(
     "evalroute_profile_scoring",
     ROOT / "services" / "evaluation" / "app" / "scoring" / "profile_scoring.py",

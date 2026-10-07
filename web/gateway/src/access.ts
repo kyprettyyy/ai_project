@@ -13,9 +13,14 @@ router.beforeEach(async (to, from, next) => {
   let loginUser = loginUserStore.loginUser
   // 确保页面刷新，首次加载时，能够等后端返回用户信息后再校验权限
   if (firstFetchLoginUser) {
-    await loginUserStore.fetchLoginUser()
-    loginUser = loginUserStore.loginUser
-    firstFetchLoginUser = false
+    try {
+      await loginUserStore.fetchLoginUser()
+      loginUser = loginUserStore.loginUser
+      firstFetchLoginUser = false
+    } catch {
+      // Keep public pages usable when the server is temporarily unavailable.
+      message.error('暂时无法连接服务，请稍后重试')
+    }
   }
   const toUrl = to.fullPath
   if (toUrl.startsWith('/admin')) {

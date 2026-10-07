@@ -28,10 +28,14 @@ class ModelService:
         entity = await self.get_by_id(model.id)
         if entity is None:
             return False
+        if any(getattr(model, field, None) is not None and getattr(model, field) != getattr(entity, field)
+               for field in ("input_price", "output_price", "price_currency")):
+            entity.pricing_config = None
         for attr in [
             "model_name",
             "description",
             "context_length",
+            "price_currency",
             "input_price",
             "output_price",
             "status",
@@ -160,6 +164,7 @@ class ModelService:
                 "modelType": model.model_type,
                 "description": model.description,
                 "contextLength": model.context_length,
+                "priceCurrency": model.price_currency,
                 "inputPrice": model.input_price,
                 "outputPrice": model.output_price,
                 "status": model.status,

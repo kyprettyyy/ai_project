@@ -1,0 +1,10 @@
+SET NAMES utf8mb4;
+USE evalroute_gateway;
+ALTER TABLE model ADD COLUMN priceCurrency VARCHAR(8) NOT NULL DEFAULT 'UNKNOWN';
+ALTER TABLE model ADD COLUMN pricingConfig VARCHAR(2048) NULL;
+ALTER TABLE request_log ADD COLUMN costCurrency VARCHAR(8) NOT NULL DEFAULT 'UNKNOWN';
+ALTER TABLE request_log ADD COLUMN catalogCost DECIMAL(12,6) NULL;
+ALTER TABLE request_log ADD COLUMN pricingSnapshot TEXT NULL;
+USE evalroute_evaluation;
+ALTER TABLE test_result ADD COLUMN costCurrency VARCHAR(8) NOT NULL DEFAULT 'UNKNOWN';
+ALTER TABLE test_result ADD COLUMN pricingSnapshot TEXT NULL;

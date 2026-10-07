@@ -26,9 +26,8 @@ class FixedRoutingStrategy(RoutingStrategy):
         stmt = select(Model).where(
             Model.is_delete == 0,
             Model.status == MODEL_STATUS_ACTIVE,
-            Model.health_status.in_(
-                [HEALTH_STATUS_HEALTHY, HEALTH_STATUS_DEGRADED, HEALTH_STATUS_UNKNOWN]
-            ),
+            # Explicit selection permits recovery attempts after transient failures.
+            # Automatic routing still filters unhealthy candidates.
             Model.model_key == requested_model,
         )
         return await self.db.scalar(stmt)

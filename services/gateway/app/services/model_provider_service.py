@@ -6,6 +6,9 @@ from math import ceil
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.exc import IntegrityError
+from app.exceptions.business_exception import BusinessException
+from app.core.constants import ErrorCode
 
 from app.core.constants import (
     DEFAULT_PAGE_NUM,
@@ -25,8 +28,20 @@ class ModelProviderService:
         self.db = db
 
     async def add_provider(self, provider: ModelProvider) -> int:
+        # Include soft-deleted rows because the database unique key still reserves their names.
+        existing = await self.db.scalar(select(ModelProvider.id).where(
+            ModelProvider.provider_name == provider.provider_name
+        ))
+        if existing is not None:
+            raise BusinessException(ErrorCode.PARAMS_ERROR, "提供者标识已存在，请编辑已有提供者或使用新的标识")
         self.db.add(provider)
-        await self.db.commit()
+        try:
+            await self.db.commit()
+        except IntegrityError as exc:
+            await self.db.rollback()
+            if getattr(exc.orig, "args", (None,))[0] == 1062:
+                raise BusinessException(ErrorCode.PARAMS_ERROR, "提供者标识已存在，请使用新的标识") from exc
+            raise
         await self.db.refresh(provider)
         return provider.id
 

@@ -37,6 +37,8 @@ logs/
 *.log
 experiments/results/*
 !experiments/results/.gitkeep
+!experiments/results/demo-results.json
+!experiments/results/demo-results.md
 tmp/
 .runtime/
 *.pid

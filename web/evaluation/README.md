@@ -1,6 +1,6 @@
-# 前端项目
+# EvalRoute Evaluation Workbench
 
-基于 Vue 3 + Vite + Ant Design Vue 的前端项目模板。
+EvalRoute 评测服务的 Vue 3 工作台。该目录迁移自 `yuyuanweb/ai-test` 的前端并适配当前 Python 评测 API；它不是从零开发的独立前端。上游当前未发现许可证，未经授权不应重新分发。详见仓库根目录的 `NOTICE` 与 `docs/PROVENANCE.md`。
 
 ## 环境要求
 
@@ -40,6 +40,8 @@ npm run lint
 ```bash
 npm run openapi2ts
 ```
+
+生成后需要审查端点命名和响应类型，避免把旧后端的控制器名称重新带入主代码。
 
 ## 目录结构
 

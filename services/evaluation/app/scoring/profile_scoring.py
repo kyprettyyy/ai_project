@@ -83,6 +83,9 @@ def build_profiles(
     observations: list[dict],
     evaluation_run_id: str,
     evaluated_at: datetime | None = None,
+    *,
+    latency_reference_ms: float = 1000.0,
+    cost_reference: float = 0.01,
 ) -> list[dict]:
     groups: dict[tuple[str, str], list[dict]] = defaultdict(list)
     for row in observations:
@@ -117,14 +120,18 @@ def build_profiles(
     profiles=[]
     for row in aggregates:
         peers=[r for r in aggregates if r["task_type"]==row["task_type"]]
-        max_latency=max((r["latency"] for r in peers if r["latency"] is not None),default=1) or 1
-        max_cost=max((r["cost"] for r in peers if r["cost"] is not None and r["currency"]==row["currency"]),default=1) or 1
         cost_peers=[r for r in peers if r["cost"] is not None and r["currency"]==row["currency"]]
         row["coverage"]["costComparable"]=row["cost"] is not None and len(cost_peers)>=2
         profiles.append({"model":row["model"],"task_type":row["task_type"],
             "quality_score":round(row["quality"],4) if row["quality"] is not None else .5,
-            "latency_score":round(max(0,1-row["latency"]/max_latency),4) if row["latency"] is not None else .5,
-            "cost_score":round(max(0,1-row["cost"]/max_cost),4) if row["coverage"]["costComparable"] else .5,
+            "latency_score":round(inverse_reference_score(row["latency"], latency_reference_ms),4) if row["latency"] is not None else .5,
+            "cost_score":round(inverse_reference_score(row["cost"], cost_reference),4) if row["coverage"]["costComparable"] else .5,
             "reliability_score":round(row["reliability"],4),"sample_count":row["sample_count"],
             "coverage":row["coverage"],"evaluation_run_id":evaluation_run_id,"evaluated_at":timestamp})
     return profiles
+
+def inverse_reference_score(value: float, reference: float) -> float:
+    """Return a stable higher-is-better score using a fixed positive reference."""
+    safe_value = max(0.0, float(value))
+    safe_reference = max(0.000001, float(reference))
+    return 1.0 / (1.0 + safe_value / safe_reference)

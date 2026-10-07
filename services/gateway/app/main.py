@@ -13,6 +13,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 
+from app.api.answer_feedback import router as answer_feedback_router
+from app.api.task_costs import router as task_costs_router
 from app.api.health import router as health_router
 from app.api.apikey import router as apikey_router
 from app.api.blacklist import router as blacklist_router
@@ -30,6 +32,7 @@ from app.api.balance import router as balance_router
 from app.api.recharge import router as recharge_router
 from app.api.stripe_webhook import router as stripe_webhook_router
 from app.api.stats import router as stats_router
+from app.api.routing_dashboard import router as routing_dashboard_router
 from app.api.user import router as user_router
 from app.common.result_utils import error
 from app.core.config import get_settings
@@ -117,12 +120,15 @@ def create_app() -> FastAPI:
             content=error(ErrorCode.SYSTEM_ERROR, "系统错误").model_dump(by_alias=True),
         )
 
+    app.include_router(task_costs_router, prefix=settings.app_base_path)
+    app.include_router(answer_feedback_router, prefix=settings.app_base_path)
     app.include_router(health_router, prefix=settings.app_base_path)
     app.include_router(user_router, prefix=settings.app_base_path)
     app.include_router(apikey_router, prefix=settings.app_base_path)
     app.include_router(chat_router, prefix=settings.app_base_path)
     app.include_router(image_router, prefix=settings.app_base_path)
     app.include_router(internal_chat_router, prefix=settings.app_base_path)
+    app.include_router(routing_dashboard_router, prefix=settings.app_base_path)
     app.include_router(stats_router, prefix=settings.app_base_path)
     app.include_router(model_router, prefix=settings.app_base_path)
     app.include_router(model_provider_router, prefix=settings.app_base_path)
@@ -143,6 +149,8 @@ def create_app() -> FastAPI:
         stop_event = asyncio.Event()
         app.state.health_check_stop_event = stop_event
         app.state.health_check_runner = asyncio.create_task(HealthCheckTask().run_loop(stop_event))
+        from app.task.answer_feedback_task import run_feedback_loop
+        app.state.feedback_runner = asyncio.create_task(run_feedback_loop(stop_event))
 
     @app.on_event("shutdown")
     async def shutdown_health_check_task() -> None:
@@ -152,6 +160,9 @@ def create_app() -> FastAPI:
             stop_event.set()
         if runner is not None:
             await runner
+        feedback_runner = getattr(app.state, "feedback_runner", None)
+        if feedback_runner is not None:
+            await feedback_runner
     return app
 
 

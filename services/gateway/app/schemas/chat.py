@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from pydantic import AliasChoices, Field
+from pydantic import AliasChoices, Field, model_serializer
 
 from app.schemas.common import CamelBaseModel
 
@@ -37,6 +37,7 @@ class ChatRequest(CamelBaseModel):
         alias="max_tokens",
         validation_alias=AliasChoices("max_tokens", "maxTokens"),
     )
+    enable_search: bool = Field(False, validation_alias=AliasChoices("enable_search", "enableSearch"))
     enable_reasoning: bool | None = Field(
         default=None,
         alias="enable_reasoning",
@@ -95,6 +96,15 @@ class ChatUsage(CamelBaseModel):
     prompt_tokens: int = Field(alias="promptTokens")
     completion_tokens: int = Field(alias="completionTokens")
     total_tokens: int = Field(alias="totalTokens")
+
+    @model_serializer(mode="wrap")
+    def serialize_usage(self, handler):
+        data = handler(self)
+        # OpenAI SDKs require snake_case; retain existing console aliases.
+        data.update(prompt_tokens=self.prompt_tokens,
+                    completion_tokens=self.completion_tokens,
+                    total_tokens=self.total_tokens)
+        return data
 
 
 class ChatResponse(CamelBaseModel):

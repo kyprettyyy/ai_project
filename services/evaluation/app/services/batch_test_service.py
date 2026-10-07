@@ -1,7 +1,6 @@
 """
 批量测试服务层
 """
-import asyncio
 import json
 import time
 import uuid
@@ -72,7 +71,7 @@ class BatchTestService:
         task_id = str(uuid.uuid4())
         total_subtasks = len(models) * len(prompts)
 
-        config_map = {}
+        config_map = {"taskType": request_data.get("task_type") or request_data.get("taskType") or "general"}
         if request_data.get("temperature") is not None:
             config_map["temperature"] = request_data["temperature"]
         if request_data.get("top_p") is not None:
@@ -135,13 +134,7 @@ class BatchTestService:
             "timestamp": int(time.time() * 1000)
         })
 
-        MAX_CONCURRENT_SUBTASKS = 5
-        sem = asyncio.Semaphore(MAX_CONCURRENT_SUBTASKS)
-
-        async def run_subtask_with_semaphore(sub_task_data: dict) -> None:
-            async with sem:
-                await asyncio.to_thread(run_subtask_sync, sub_task_data)
-
+        subtasks = []
         for model_name in models:
             for prompt in prompts:
                 sub_task_data = {
@@ -153,7 +146,10 @@ class BatchTestService:
                     "modelName": model_name,
                     "userId": user_id
                 }
-                asyncio.create_task(run_subtask_with_semaphore(sub_task_data))
+                subtasks.append(sub_task_data)
+
+        from app.services.batch_test_runner import start_batch
+        start_batch(task_id, subtasks, run_subtask_sync)
 
         return task_id
 
@@ -433,6 +429,7 @@ class BatchTestService:
             "modelName": result.model_name,
             "inputPrompt": result.input_prompt,
             "outputText": result.output_text,
+            "resultStatus": "success" if (result.output_text or "").strip() else "empty",
             "reasoning": result.reasoning,
             "responseTimeMs": result.response_time_ms,
             "inputTokens": result.input_tokens,

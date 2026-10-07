@@ -1,3 +1,5 @@
+SET NAMES utf8mb4;
+
 USE evalroute_evaluation;
 
 INSERT INTO scene

@@ -27,7 +27,7 @@ class RoutingService:
                            *, task_type: str = "general", weights: dict[str, float] | None = None,
                            trace_id: str | None = None, evaluation_run_id: str | None = None,
                            context: RoutingContext | None = None) -> Model | None:
-        if strategy_type == ROUTING_STRATEGY_ADAPTIVE:
+        if strategy_type in (None, ROUTING_STRATEGY_AUTO, ROUTING_STRATEGY_ADAPTIVE):
             self.last_ranked = await self.adaptive.rank_models(model_type, task_type, weights, context)
             if trace_id:
                 await self.adaptive.persist_decision(
@@ -41,7 +41,7 @@ class RoutingService:
     async def get_fallback_models(self, strategy_type: str | None, model_type: str, requested_model: str | None,
                                   *, task_type: str = "general", weights: dict[str, float] | None = None,
                                   context: RoutingContext | None = None) -> list[Model]:
-        if strategy_type == ROUTING_STRATEGY_ADAPTIVE:
+        if strategy_type in (None, ROUTING_STRATEGY_AUTO, ROUTING_STRATEGY_ADAPTIVE):
             if not self.last_ranked:
                 self.last_ranked = await self.adaptive.rank_models(model_type, task_type, weights, context)
             return [item[0] for item in self.last_ranked[1:]]

@@ -14,8 +14,10 @@ from app.core.logging_config import logger
 from app.db.redis import get_redis_client_sync
 from app.db.sync_session import get_sync_session
 from app.models.test_task import TestTask
+from app.services.batch_task_state import COMPLETE_SUBTASK_SQL
 from app.models.test_result import TestResult
 from app.models.model import Model
+from app.models.scene_prompt import ScenePrompt
 from app.utils.cost_calculator import CostCalculator
 from app.utils.model_pricing_cache import get_model_pricing_cached_sync
 from app.utils.prompt_guardrail import validate as validate_prompt
@@ -93,7 +95,7 @@ def run_subtask_sync(sub_task_data: dict) -> dict:
             default_headers=GATEWAY_EXTRA_HEADERS,
         )
 
-        SUBTASK_TIMEOUT_SECONDS = 30
+        SUBTASK_TIMEOUT_SECONDS = 120
         response = client.chat.completions.create(
             model=model_name,
             messages=[{"role": "user", "content": prompt_content}],
@@ -103,6 +105,9 @@ def run_subtask_sync(sub_task_data: dict) -> dict:
             extra_headers={"X-Eval-Run-Id": str(task_id), "X-Task-Type": config.get("taskType", "benchmark")}
         )
 
+        business_code = getattr(response, "code", None)
+        if business_code not in (None, 0):
+            raise RuntimeError(getattr(response, "message", None) or f"Gateway error {business_code}")
         response_time_ms = int((time.time() - start_time) * 1000)
         output_text = ""
         input_tokens = 0
@@ -113,39 +118,24 @@ def run_subtask_sync(sub_task_data: dict) -> dict:
             if hasattr(response.choices[0].message, "reasoning_content") and response.choices[0].message.reasoning_content:
                 output_text = (response.choices[0].message.reasoning_content or "") + output_text
 
+        if not output_text.strip():
+            logger.warning("记录空回答并继续批次: taskId={}, model={}, promptId={}",
+                           task_id, model_name, sub_task_data.get("promptId"))
+
         if response.usage:
             input_tokens = response.usage.prompt_tokens or 0
             output_tokens = response.usage.completion_tokens or 0
 
-        def _fetch_pricing():
-            model_result = session.execute(
-                select(Model).where(Model.id == model_name, Model.is_delete == 0)
-            )
-            model_row = model_result.scalar_one_or_none()
-            if model_row:
-                return (model_row.input_price, model_row.output_price)
-            return (None, None)
-
-        input_price, output_price = (None, None)
-        try:
-            redis_client = get_redis_client_sync()
-            if redis_client:
-                input_price, output_price = get_model_pricing_cached_sync(
-                    redis_client, model_name, _fetch_pricing
-                )
-        except Exception:
-            pass
-        if input_price is None and output_price is None:
-            input_price, output_price = _fetch_pricing()
-
-        if input_price is not None and output_price is not None:
-            cost = CostCalculator.calculate_cost(
-                model_name, input_tokens, output_tokens, input_price, output_price
-            )
-        else:
-            cost = (Decimal(str(input_tokens)) / Decimal(str(TOKENS_PER_MILLION))) * DEFAULT_INPUT_PRICE + \
-                   (Decimal(str(output_tokens)) / Decimal(str(TOKENS_PER_MILLION))) * DEFAULT_OUTPUT_PRICE
-            cost = cost.quantize(Decimal("0.000001"))
+        from app.utils.catalog_cost import estimate_cost
+        from datetime import datetime, timezone
+        model_row = session.execute(select(Model).where(
+            Model.id == model_name, Model.is_delete == 0)).scalar_one_or_none()
+        raw = json.loads(model_row.raw_data or '{}') if model_row else {}
+        pricing = raw.get('pricing') or {}
+        cost, snapshot = estimate_cost(input_tokens, output_tokens,
+            model_row.input_price if model_row else None,
+            model_row.output_price if model_row else None,
+            pricing.get('currency','UNKNOWN'), pricing.get('policy'), datetime.now(timezone.utc))
 
         test_result = TestResult(
             id=result_id,
@@ -161,6 +151,8 @@ def run_subtask_sync(sub_task_data: dict) -> dict:
             input_tokens=input_tokens,
             output_tokens=output_tokens,
             cost=cost,
+            cost_currency=snapshot["currency"],
+            pricing_snapshot=json.dumps(snapshot, ensure_ascii=False),
             is_delete=0
         )
         session.add(test_result)
@@ -169,13 +161,25 @@ def run_subtask_sync(sub_task_data: dict) -> dict:
         if enable_ai_scoring and output_text:
             from app.services.ai_scoring_service import run_ai_scoring_sync
             from app.schemas.evaluation import ai_score_result_to_json
+            reference = None
+            prompt_row = session.execute(select(ScenePrompt).where(
+                ScenePrompt.id == sub_task_data.get("promptId"), ScenePrompt.is_delete == 0
+            )).scalar_one_or_none()
+            if prompt_row and prompt_row.expected_output:
+                try:
+                    parsed = json.loads(prompt_row.expected_output)
+                    if isinstance(parsed, dict):
+                        reference = parsed
+                except (ValueError, TypeError):
+                    pass
             ai_result = run_ai_scoring_sync(
                 sync_session=session,
                 openai_sync_client=client,
                 question=prompt_content,
                 model_response=output_text,
                 tested_model_name=model_name,
-                extra_headers=GATEWAY_EXTRA_HEADERS,
+                reference=reference,
+                extra_headers={**GATEWAY_EXTRA_HEADERS, "X-Eval-Run-Id":str(task_id), "X-Task-Type":"evaluation_judge"},
                 user_id=user_id,
                 redis_client=get_redis_client_sync(),
             )
@@ -190,27 +194,10 @@ def run_subtask_sync(sub_task_data: dict) -> dict:
                     totalCost = totalCost + :cost
                 WHERE id = :model_id AND isDelete = 0
             """),
-            {"tokens": total_tokens, "cost": float(cost), "model_id": model_name}
+            {"tokens": total_tokens, "cost": float(cost or 0), "model_id": model_name}
         )
 
-        session.execute(
-            text("""
-                UPDATE test_task
-                SET completedSubtasks = completedSubtasks + 1,
-                    status = CASE
-                        WHEN completedSubtasks + 1 >= totalSubtasks THEN 'completed'
-                        WHEN status = 'pending' THEN 'running'
-                        ELSE status
-                    END,
-                    startedAt = CASE WHEN startedAt IS NULL THEN NOW() ELSE startedAt END,
-                    completedAt = CASE
-                        WHEN completedSubtasks + 1 >= totalSubtasks THEN NOW()
-                        ELSE completedAt
-                    END
-                WHERE id = :task_id AND isDelete = 0
-            """),
-            {"task_id": task_id}
-        )
+        session.execute(COMPLETE_SUBTASK_SQL, {"task_id": task_id})
 
         session.commit()
 
@@ -270,7 +257,7 @@ def run_subtask_sync(sub_task_data: dict) -> dict:
                     text("""
                         UPDATE test_task
                         SET completedSubtasks = completedSubtasks + 1,
-                            status = 'failed'
+                            status = CASE WHEN status = 'cancelled' THEN status ELSE 'failed' END
                         WHERE id = :task_id AND isDelete = 0
                     """),
                     {"task_id": task_id}

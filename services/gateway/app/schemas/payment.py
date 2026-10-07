@@ -57,3 +57,9 @@ class BillingRecordVO(LongIdModel):
     @field_serializer("request_log_id", when_used="json")
     def serialize_request_log_id(self, value: int | None) -> str | None:
         return str(value) if value is not None else None
+
+
+class AdminCreditRequest(CamelBaseModel):
+    user_id: int = Field(alias="userId", gt=0)
+    amount: Decimal = Field(gt=0, le=1000000, max_digits=10, decimal_places=2)
+    reason: str = Field(min_length=1, max_length=200)

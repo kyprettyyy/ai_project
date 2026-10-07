@@ -16,6 +16,7 @@ from app.core.config import get_settings
 from app.db.redis import get_redis_client_sync
 from app.db.sync_session import get_sync_session
 from app.models.test_task import TestTask
+from app.services.batch_task_state import COMPLETE_SUBTASK_SQL
 from app.models.test_result import TestResult
 from app.models.model import Model
 from app.utils.cost_calculator import CostCalculator
@@ -160,24 +161,7 @@ def _do_process_subtask(sub_task_data: dict) -> dict:
         )
         session.add(test_result)
 
-        session.execute(
-            text("""
-                UPDATE test_task
-                SET completedSubtasks = completedSubtasks + 1,
-                    status = CASE
-                        WHEN completedSubtasks + 1 >= totalSubtasks THEN 'completed'
-                        WHEN status = 'pending' THEN 'running'
-                        ELSE status
-                    END,
-                    startedAt = CASE WHEN startedAt IS NULL THEN NOW() ELSE startedAt END,
-                    completedAt = CASE
-                        WHEN completedSubtasks + 1 >= totalSubtasks THEN NOW()
-                        ELSE completedAt
-                    END
-                WHERE id = :task_id AND isDelete = 0
-            """),
-            {"task_id": task_id}
-        )
+        session.execute(COMPLETE_SUBTASK_SQL, {"task_id": task_id})
 
         session.commit()
 
@@ -222,7 +206,7 @@ def _do_process_subtask(sub_task_data: dict) -> dict:
                     text("""
                         UPDATE test_task
                         SET completedSubtasks = completedSubtasks + 1,
-                            status = 'failed'
+                            status = CASE WHEN status = 'cancelled' THEN status ELSE 'failed' END
                         WHERE id = :task_id AND isDelete = 0
                     """),
                     {"task_id": task_id}

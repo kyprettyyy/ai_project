@@ -1,6 +1,14 @@
 import request from '../request'
 
 export interface ReportSummaryVO {
+  costCurrency?: string
+  answerCost?: number
+  judgeCost?: number
+  knownCost?: number
+  costIncomplete?: boolean
+  costNote?: string
+  costTotals?: Record<string, number>
+  judgeTokens?: number
   totalCost?: number
   avgResponseTimeMs?: number
   totalTokens?: number
@@ -9,6 +17,7 @@ export interface ReportSummaryVO {
 }
 
 export interface ModelStatisticsVO {
+  costCurrency?: string
   modelName: string
   testCount: number
   avgResponseTimeMs?: number
@@ -43,6 +52,7 @@ export interface BarChartDataVO {
 }
 
 export interface TestResultVO {
+  costCurrency?: string
   id: string
   taskId: string
   sceneId: string

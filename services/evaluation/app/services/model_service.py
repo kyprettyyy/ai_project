@@ -1,11 +1,14 @@
 """
 模型服务层
 """
+import asyncio
+import time
+import logging
 import json
 import httpx
 from typing import List, Optional
 from decimal import Decimal
-from sqlalchemy import select, and_, or_, func
+from sqlalchemy import select, update, and_, or_, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.model import Model
@@ -14,6 +17,8 @@ from app.core.config import get_settings
 from app.core.errors import BusinessException, ErrorCode
 
 settings = get_settings()
+_catalog_lock = asyncio.Lock()
+_last_catalog_sync = 0.0
 
 
 class ModelService:
@@ -24,6 +29,20 @@ class ModelService:
     def __init__(self, db: AsyncSession):
         self.db = db
     
+    async def refresh_catalog(self) -> None:
+        """Refresh discovery at most once per two seconds; preserve cache on failure."""
+        global _last_catalog_sync
+        async with _catalog_lock:
+            if time.monotonic() - _last_catalog_sync < 2:
+                return
+            try:
+                await self.sync_models_from_gateway()
+            except Exception:
+                await self.db.rollback()
+                logging.getLogger(__name__).warning("Gateway catalog unavailable; using cached models", exc_info=True)
+            finally:
+                _last_catalog_sync = time.monotonic()
+
     async def list_models(
         self,
         query_request: ModelQueryRequest,
@@ -39,6 +58,7 @@ class ModelService:
         Returns:
             (模型列表, 总数)
         """
+        await self.refresh_catalog()
         query = select(Model).where(Model.is_delete == 0)
         
         if query_request.search_text:
@@ -95,6 +115,7 @@ class ModelService:
         Returns:
             模型列表
         """
+        await self.refresh_catalog()
         result = await self.db.execute(
             select(Model)
             .where(Model.is_delete == 0)
@@ -137,7 +158,13 @@ class ModelService:
                 response.raise_for_status()
                 
                 data = response.json()
-                models_data = data.get("data", [])
+                models_data = data.get("data")
+                if not isinstance(models_data, list) or any(
+                    not isinstance(item, dict) or not isinstance(item.get("id"), str) or not item["id"]
+                    for item in models_data
+                ):
+                    raise ValueError("Invalid gateway model catalog")
+                active_ids = [item["id"] for item in models_data]
                 
                 synced_count = 0
                 
@@ -175,6 +202,7 @@ class ModelService:
                     is_china = self._is_china_model(model_id)
                     
                     if existing_model:
+                        existing_model.is_delete = 0
                         existing_model.name = model_data.get("name", model_id)
                         existing_model.description = model_data.get("description")
                         existing_model.context_length = model_data.get("context_length")
@@ -208,10 +236,16 @@ class ModelService:
                     
                     synced_count += 1
                 
+                # Hide disabled/deleted gateway models without removing history or usage.
+                stale = update(Model).where(Model.is_delete == 0)
+                if active_ids:
+                    stale = stale.where(Model.id.not_in(active_ids))
+                await self.db.execute(stale.values(is_delete=1))
                 await self.db.commit()
                 return synced_count
                 
         except Exception as e:
+            await self.db.rollback()
             raise BusinessException(ErrorCode.SYSTEM_ERROR, f"同步模型失败: {str(e)}")
     
     def _extract_provider(self, model_id: str) -> str:

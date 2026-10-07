@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Request, Response
+from fastapi import APIRouter, Depends, Query, Request, Response
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -197,7 +197,7 @@ async def set_user_quota(
 
 @router.post("/quota/reset", response_model=BaseResponse[bool])
 async def reset_user_quota(
-    user_id: int,
+    user_id: int = Query(alias="userId", gt=0),
     db: AsyncSession = Depends(get_db_session),
     _: User = Depends(require_role(UserRole.ADMIN)),
 ) -> BaseResponse[bool]:
@@ -209,7 +209,7 @@ async def reset_user_quota(
 
 @router.post("/disable", response_model=BaseResponse[bool])
 async def disable_user(
-    user_id: int,
+    user_id: int = Query(alias="userId", gt=0),
     db: AsyncSession = Depends(get_db_session),
     _: User = Depends(require_role(UserRole.ADMIN)),
 ) -> BaseResponse[bool]:
@@ -223,7 +223,7 @@ async def disable_user(
 
 @router.post("/enable", response_model=BaseResponse[bool])
 async def enable_user(
-    user_id: int,
+    user_id: int = Query(alias="userId", gt=0),
     db: AsyncSession = Depends(get_db_session),
     _: User = Depends(require_role(UserRole.ADMIN)),
 ) -> BaseResponse[bool]:
@@ -237,7 +237,7 @@ async def enable_user(
 
 @router.get("/analysis", response_model=BaseResponse[UserAnalysisVO])
 async def get_user_analysis(
-    user_id: int,
+    user_id: int = Query(alias="userId", gt=0),
     db: AsyncSession = Depends(get_db_session),
     _: User = Depends(require_role(UserRole.ADMIN)),
 ) -> BaseResponse[UserAnalysisVO]:

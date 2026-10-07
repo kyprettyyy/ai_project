@@ -24,12 +24,11 @@
       <!-- 统计摘要 -->
       <a-row :gutter="16" style="margin-bottom: 24px">
         <a-col :span="8">
-          <a-statistic 
-            title="总成本" 
-            :value="report?.summary?.totalCost || 0" 
-            prefix="$" 
-            :precision="6" 
-          />
+          <div>目录价估算 · {{ report?.summary?.costIncomplete ? '已统计小计' : '总费用' }}</div>
+          <div style="font-size: 28px">{{ money(report?.summary?.knownCost, report?.summary?.costCurrency) }}</div>
+          <div>回答费：{{ money(report?.summary?.answerCost, report?.summary?.costCurrency) }}</div>
+          <div>打分费：{{ money(report?.summary?.judgeCost, report?.summary?.costCurrency) }}</div>
+          <div>{{ report?.summary?.costNote }}</div>
         </a-col>
         <a-col :span="8">
           <a-statistic 
@@ -49,6 +48,8 @@
 
       <!-- 雷达图 -->
       <a-card title="多维度能力对比（雷达图）" :bordered="false" style="margin-bottom: 24px">
+        <p>准确性为 AI 事实评分（30分归一化），完整性为 AI 要点覆盖评分（20分归一化）。空回答计0分；未评分回答不计入均分。旧任务未按参考要点评分，不能视为参考要点覆盖率。</p>
+        <p v-for="stat in report?.modelStatistics || []" :key="stat.modelName">{{ stat.modelName }}：空回答 {{ (stat as any).emptyCount ?? 0 }}/{{ stat.testCount }}，有评分 {{ (stat as any).scoredCount ?? 0 }}/{{ stat.testCount }}</p>
         <div ref="radarChartRef" style="width: 100%; height: 400px"></div>
       </a-card>
 
@@ -87,7 +88,7 @@
               {{ record.avgResponseTimeMs?.toFixed(2) || '-' }}ms
             </template>
             <template v-else-if="column.key === 'totalCost'">
-              ${{ record.totalCost?.toFixed(6) || '0.000000' }}
+              {{ money(record.totalCost, record.costCurrency) }}
             </template>
             <template v-else-if="column.key === 'avgUserRating'">
               <a-rate :value="record.avgUserRating" disabled :count="5" />
@@ -135,7 +136,7 @@
                 <div class="metrics-cell">
                   <div>响应时间: {{ record.responseTimeMs }}ms</div>
                   <div>Token: {{ record.inputTokens }}/{{ record.outputTokens }}</div>
-                  <div>成本: ${{ record.cost?.toFixed(6) || '0.000000' }}</div>
+                  <div>成本: {{ money(record.cost, record.costCurrency) }}</div>
                 </div>
               </template>
               <template v-else-if="column.key === 'userRating'">
@@ -176,7 +177,7 @@
             <div class="modal-metrics">
               <span>响应时间: {{ selectedRecord.responseTimeMs }}ms</span>
               <span>Token: {{ selectedRecord.inputTokens }}/{{ selectedRecord.outputTokens }}</span>
-              <span>成本: ${{ selectedRecord.cost?.toFixed(6) || '0.000000' }}</span>
+              <span>成本: {{ money(selectedRecord.cost, selectedRecord.costCurrency) }}</span>
             </div>
           </div>
         </div>
@@ -209,6 +210,8 @@
 </template>
 
 <script setup lang="ts">
+const money = (value: number | null | undefined, currency?: string) => value == null || !['CNY', 'USD'].includes(currency || '') ? '未统计' : `${currency === 'CNY' ? '¥' : '$'}${value.toFixed(6)}`
+
 import { ref, computed, onMounted, watch, nextTick } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { message } from 'ant-design-vue'
@@ -273,7 +276,7 @@ const summaryColumns = [
     key: 'totalCost'
   },
   {
-    title: '平均用户评分',
+    title: '平均人工评测评分',
     key: 'avgUserRating'
   }
 ]
@@ -298,7 +301,7 @@ const resultColumns = [
     width: 220
   },
   {
-    title: '用户评分',
+    title: '人工评测评分',
     key: 'userRating',
     width: 150
   },
@@ -445,7 +448,7 @@ const updateBarChart = () => {
       break
     case 'cost':
       selectedSeries = report.value.barChart.series.find(s => s.name === '总成本')
-      yAxisName = '成本 (USD)'
+      yAxisName = '回答费用（目录价估算）'
       break
   }
 
@@ -670,7 +673,7 @@ const handleExportPDF = async () => {
             <span style="color: #909399; font-size: 9px;">💰</span>
             <span style="color: #606266; font-size: 9px;">
               <strong style="color: #303133;">成本:</strong> 
-              <span style="color: #f56c6c; font-weight: 600;">$${result.cost?.toFixed(6) || '0.000000'}</span>
+              <span style="color: #f56c6c; font-weight: 600;">${money(result.cost, result.costCurrency)}</span>
             </span>
           </div>
         </div>
@@ -975,7 +978,7 @@ const handleExportPDF = async () => {
     doc.setFont('helvetica', 'normal')
     const summary = report.value.summary
     
-    const costText = `总成本: $${summary.totalCost?.toFixed(6) || '0.000000'}`
+    const costText = `目录价估算小计: ${money(summary.knownCost, summary.costCurrency)}；回答费: ${money(summary.answerCost, summary.costCurrency)}；打分费: ${money(summary.judgeCost, summary.costCurrency)}。${summary.costNote}`
     const costCanvas = await createTextCanvas(costText, 11, pageWidth - 40)
     const costImg = costCanvas.toDataURL('image/png')
     const costHeight = (costCanvas.height * (pageWidth - 40)) / costCanvas.width
@@ -1092,7 +1095,7 @@ const handleExportPDF = async () => {
       xPos += colWidths[2]
       doc.text(String(stat.totalTokens || 0), xPos, yPos + 3)
       xPos += colWidths[3]
-      doc.text(`$${stat.totalCost?.toFixed(6) || '0.000000'}`, xPos, yPos + 3)
+      doc.text(`${money(stat.totalCost, stat.costCurrency)}`, xPos, yPos + 3)
       yPos += 8
     }
 

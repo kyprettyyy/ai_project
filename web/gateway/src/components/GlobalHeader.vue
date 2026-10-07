@@ -2,7 +2,7 @@
   <a-layout-header class="header">
     <a-row :wrap="false">
       <!-- 左侧：Logo和标题 -->
-      <a-col flex="200px">
+      <a-col flex="240px">
         <RouterLink to="/">
           <div class="header-left">
             <span class="logo">ER</span>
@@ -78,70 +78,37 @@ router.afterEach((to) => {
 
 // 菜单配置项
 const originItems = [
+  { key: '/', icon: () => h(HomeOutlined), label: '主页', title: '个人概览' },
   {
-    key: '/',
-    icon: () => h(HomeOutlined),
-    label: '主页',
-    title: '主页',
+    key: 'ai-tools', icon: () => h(CommentOutlined), label: 'AI 工具',
+    children: [
+      { key: '/chat', icon: () => h(CommentOutlined), label: 'AI 对话' },
+      { key: '/image', icon: () => h(PictureOutlined), label: 'AI 绘图' },
+    ],
   },
   {
-    key: '/chat',
-    icon: () => h(CommentOutlined),
-    label: 'AI 对话',
-    title: 'AI 对话',
+    key: 'analytics', icon: () => h(AppstoreOutlined), label: '数据分析',
+    children: [
+      { key: '/routing-analysis', icon: () => h(AppstoreOutlined), label: '路由分析' },
+      { key: '/user/history', icon: () => h(HistoryOutlined), label: '调用历史' },
+    ],
   },
   {
-    key: '/image',
-    icon: () => h(PictureOutlined),
-    label: 'AI 绘图',
-    title: 'AI 绘图',
+    key: 'keys', icon: () => h(KeyOutlined), label: '密钥管理',
+    children: [
+      { key: '/user/apikey', icon: () => h(KeyOutlined), label: '网关 API Key（调用本平台）' },
+      { key: '/user/mykeys', icon: () => h(SafetyOutlined), label: '供应商密钥（BYOK）' },
+    ],
   },
   {
-    key: '/user/apikey',
-    icon: () => h(KeyOutlined),
-    label: 'API Key',
-    title: 'API Key 管理',
-  },
-  {
-    key: '/user/history',
-    icon: () => h(HistoryOutlined),
-    label: '调用历史',
-    title: '调用历史',
-  },
-  {
-    key: '/user/mykeys',
-    icon: () => h(SafetyOutlined),
-    label: '我的密钥',
-    title: '我的密钥（BYOK）',
-  },
-  {
-    key: '/admin/userManage',
-    label: '用户管理',
-    title: '用户管理',
-  },
-  {
-    key: '/admin/modelManage',
-    icon: () => h(AppstoreOutlined),
-    label: '模型管理',
-    title: '模型管理',
-  },
-  {
-    key: '/admin/providerManage',
-    icon: () => h(CloudServerOutlined),
-    label: '提供者管理',
-    title: '提供者管理',
-  },
-  {
-    key: '/admin/blacklistManage',
-    icon: () => h(StopOutlined),
-    label: '黑名单管理',
-    title: '黑名单管理',
-  },
-  {
-    key: '/admin/pluginManage',
-    icon: () => h(ApiOutlined),
-    label: '插件管理',
-    title: '插件管理',
+    key: '/admin', icon: () => h(CloudServerOutlined), label: '系统管理',
+    children: [
+      { key: '/admin/modelManage', label: '模型管理' },
+      { key: '/admin/providerManage', label: '提供者管理' },
+      { key: '/admin/userManage', label: '用户管理' },
+      { key: '/admin/pluginManage', label: '插件管理' },
+      { key: '/admin/blacklistManage', label: '黑名单管理' },
+    ],
   },
 ]
 
@@ -200,6 +167,7 @@ const doLogout = async () => {
 }
 
 .logo {
+  flex-shrink: 0;
   height: 48px;
   width: 48px;
   display: grid;
@@ -211,6 +179,7 @@ const doLogout = async () => {
 }
 
 .site-title {
+  white-space: nowrap;
   margin: 0;
   font-size: 18px;
   color: #1890ff;

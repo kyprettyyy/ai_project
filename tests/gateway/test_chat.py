@@ -19,8 +19,8 @@ class FakeBalanceService:
 
 
 class ChatRoutingContextTest(unittest.IsolatedAsyncioTestCase):
-    def test_strategy_defaults_to_adaptive_without_explicit_model(self) -> None:
-        self.assertEqual(ChatService._determine_strategy_type(None, None), "adaptive")
+    def test_strategy_defaults_to_auto_without_explicit_model(self) -> None:
+        self.assertEqual(ChatService._determine_strategy_type(None, None), "auto")
         self.assertEqual(ChatService._determine_strategy_type(None, "fixed-model"), "fixed")
 
     async def test_request_is_converted_to_budget_aware_context(self) -> None:
@@ -45,3 +45,60 @@ class ChatRoutingContextTest(unittest.IsolatedAsyncioTestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+class AnswerIdentityTest(unittest.IsolatedAsyncioTestCase):
+    async def test_stream_commits_answer_before_finish(self):
+        from unittest.mock import AsyncMock, MagicMock, patch
+        from types import SimpleNamespace
+        from app.schemas.chat import StreamChunk
+        service = ChatService(None)
+        model = SimpleNamespace(id=1, model_key='actual', provider_id=2, price_currency='UNKNOWN', input_price=Decimal('0'), output_price=Decimal('0'))
+        service.user_service.is_user_disabled = AsyncMock(return_value=False)
+        service._build_routing_context = AsyncMock()
+        service.routing_service.select_model = AsyncMock(return_value=model)
+        service.model_provider_service.get_by_id = AsyncMock(return_value=SimpleNamespace(provider_name='bailian'))
+        service.user_provider_key_service.get_user_provider_api_key = AsyncMock(return_value=None)
+        service.quota_service.check_quota = AsyncMock(return_value=True)
+        service.balance_service.get_user_balance = AsyncMock(return_value=Decimal('1'))
+        service.request_log_service.log_request = AsyncMock(return_value=SimpleNamespace(id=12))
+        async def chunks(*args):
+            yield StreamChunk(text='Hello')
+            yield StreamChunk(text=' world')
+        service.model_invoke_service.invoke_stream_chunk = chunks
+        with patch('app.services.chat_service.AnswerFeedbackService') as feedback:
+            feedback.return_value.save_answer = AsyncMock()
+            events=[]
+            async for event in service.chat_stream(ChatRequest(messages=[ChatMessage(role='user',content='Hi')],model='actual'),1,None):
+                if '"finishReason":"stop"' in event:
+                    feedback.return_value.save_answer.assert_awaited_once()
+                events.append(event)
+            self.assertEqual(feedback.return_value.save_answer.await_args.args[-1],'Hello world')
+            self.assertEqual(events[-1],'data: [DONE]\n\n')
+            import json
+            ids={json.loads(event[6:])['id'] for event in events[:-1]}
+            self.assertEqual(len(ids),1)
+            self.assertEqual(service.request_log_service.log_request.await_args.kwargs['trace_id'],ids.pop())
+
+class StreamFailureTest(unittest.IsolatedAsyncioTestCase):
+    async def test_zero_balance_is_sent_as_explicit_error(self):
+        import json
+        from types import SimpleNamespace
+        from unittest.mock import AsyncMock
+        service = ChatService(None)
+        service.user_service.is_user_disabled = AsyncMock(return_value=False)
+        service._build_routing_context = AsyncMock()
+        service.routing_service.select_model = AsyncMock(return_value=SimpleNamespace(id=1, model_key='qwen-turbo', provider_id=2))
+        service.model_provider_service.get_by_id = AsyncMock(return_value=SimpleNamespace(provider_name='bailian'))
+        service.user_provider_key_service.get_user_provider_api_key = AsyncMock(return_value=None)
+        service.quota_service.check_quota = AsyncMock(return_value=True)
+        service.balance_service.get_user_balance = AsyncMock(return_value=Decimal('0'))
+        service.request_log_service.log_request = AsyncMock()
+        service.model_invoke_service.invoke_stream_chunk = AsyncMock()
+        events = [event async for event in service.chat_stream(ChatRequest(messages=[ChatMessage(role='user',content='Hi')]),2,None)]
+        self.assertEqual(len(events),1)
+        self.assertTrue(events[0].startswith('event: error\n'))
+        payload = json.loads(events[0].split('data: ',1)[1])
+        self.assertEqual(payload['error']['code'],50001)
+        self.assertIn('余额不足',payload['error']['message'])
+        service.model_invoke_service.invoke_stream_chunk.assert_not_called()
+        self.assertEqual(service.request_log_service.log_request.await_args.kwargs['status'],'failed')

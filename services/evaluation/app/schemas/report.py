@@ -15,7 +15,15 @@ class ReportSummaryVO(BaseModel):
         protected_namespaces=(),
     )
 
+    cost_currency: str = Field("UNKNOWN", alias="costCurrency")
     total_cost: Optional[float] = Field(None, description="总成本(USD)", alias="totalCost")
+    answer_cost: Optional[float] = Field(None, alias="answerCost")
+    judge_cost: Optional[float] = Field(None, alias="judgeCost")
+    known_cost: Optional[float] = Field(None, alias="knownCost")
+    cost_incomplete: bool = Field(True, alias="costIncomplete")
+    cost_totals: dict[str, float] = Field(default_factory=dict, alias="costTotals")
+    cost_note: str = Field("", alias="costNote")
+    judge_tokens: Optional[int] = Field(None, alias="judgeTokens")
     avg_response_time_ms: Optional[float] = Field(None, description="平均响应时间(毫秒)", alias="avgResponseTimeMs")
     total_tokens: Optional[int] = Field(None, description="总Token消耗", alias="totalTokens")
     total_results: Optional[int] = Field(None, description="测试结果总数", alias="totalResults")
@@ -34,10 +42,13 @@ class ModelStatisticsVO(BaseModel):
 
     model_name: str = Field(..., description="模型名称", alias="modelName")
     test_count: int = Field(..., description="测试次数", alias="testCount")
+    empty_count: int = Field(0, alias="emptyCount")
+    scored_count: int = Field(0, alias="scoredCount")
     avg_response_time_ms: Optional[float] = Field(None, description="平均响应时间(毫秒)", alias="avgResponseTimeMs")
     avg_input_tokens: Optional[float] = Field(None, description="平均输入Token数", alias="avgInputTokens")
     avg_output_tokens: Optional[float] = Field(None, description="平均输出Token数", alias="avgOutputTokens")
     total_tokens: Optional[int] = Field(None, description="总Token数", alias="totalTokens")
+    cost_currency: str = Field("UNKNOWN", alias="costCurrency")
     total_cost: Optional[float] = Field(None, description="总成本(USD)", alias="totalCost")
     avg_cost: Optional[float] = Field(None, description="平均成本(USD)", alias="avgCost")
     avg_user_rating: Optional[float] = Field(None, description="平均用户评分(1-5)", alias="avgUserRating")
@@ -83,7 +94,7 @@ class BarSeriesVO(BaseModel):
     )
 
     name: str = Field(..., description="系列名称")
-    data: List[float] = Field(..., description="数据值列表")
+    data: List[Optional[float]] = Field(..., description="数据值列表")
     unit: Optional[str] = Field(None, description="单位")
 
 
@@ -122,6 +133,7 @@ class TestResultVO(BaseModel):
     response_time_ms: Optional[int] = Field(None, description="响应时间(毫秒)", alias="responseTimeMs")
     input_tokens: Optional[int] = Field(None, description="输入Token数", alias="inputTokens")
     output_tokens: Optional[int] = Field(None, description="输出Token数", alias="outputTokens")
+    cost_currency: str = Field("UNKNOWN", alias="costCurrency")
     cost: Optional[float] = Field(None, description="成本(USD)")
     user_rating: Optional[int] = Field(None, description="用户评分(1-5)", alias="userRating")
     ai_score: Optional[str] = Field(None, description="AI评分详情(JSON)", alias="aiScore")

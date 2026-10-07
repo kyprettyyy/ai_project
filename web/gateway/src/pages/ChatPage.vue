@@ -1,5 +1,12 @@
 <template>
   <div id="chatPage">
+    <a-modal v-model:open="feedbackVisible" title="这条回答有什么问题？" :confirm-loading="feedbackTarget?.feedbackLoading" @ok="confirmNegativeFeedback">
+      <a-radio-group v-model:value="feedbackReason">
+        <a-radio value="incorrect">答案错误</a-radio><a-radio value="incomplete">内容不完整</a-radio>
+        <a-radio value="irrelevant">不符合要求</a-radio><a-radio value="other">其他</a-radio>
+      </a-radio-group>
+      <a-textarea v-model:value="feedbackComment" placeholder="补充意见（可选）" :maxlength="2000" :rows="3" style="margin-top:16px" />
+    </a-modal>
     <!-- 对话内容包裹层 -->
     <div class="chat-wrapper">
       <!-- 消息列表区域（带滚动条） -->
@@ -29,6 +36,11 @@
                 <div v-show="msg.thinkingExpanded" class="thinking-detail" v-html="renderMarkdown(msg.thinking)"></div>
               </div>
               <div class="answer-text" v-html="renderMarkdown(msg.answer || msg.content)"></div>
+              <a-space v-if="msg.requestId && msg.content.trim()" style="margin-top:12px">
+                <a-button size="small" :type="msg.vote === 1 ? 'primary' : 'default'" :loading="msg.feedbackLoading" @click="submitFeedback(msg, 1)">👍 有帮助</a-button>
+                <a-button size="small" :type="msg.vote === -1 ? 'primary' : 'default'" :disabled="msg.feedbackLoading" @click="openNegativeFeedback(msg)">👎 不满意</a-button>
+                <span v-if="msg.vote" style="color:#888;font-size:12px">已记录反馈，可修改</span>
+              </a-space>
             </div>
             <!-- 用户消息 -->
             <div v-else class="message-content">
@@ -300,6 +312,7 @@ import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { listActiveModels } from '@/api/modelController'
 import { listEnabledPlugins } from '@/api/pluginController'
 import { message } from 'ant-design-vue'
+import request from '@/request'
 import { marked } from 'marked'
 import {
   AppstoreOutlined,
@@ -314,7 +327,7 @@ import {
 
 // 路由策略选项
 const routingStrategyOptions = [
-  { value: 'auto', label: '自动路由', description: '综合成本、延迟、优先级智能选择' },
+  { value: 'auto', label: '自动路由', description: '综合任务能力、评测成绩、用户反馈、成本和延迟选择模型' },
   { value: 'cost_first', label: '成本优先', description: '选择费用最低的模型' },
   { value: 'latency_first', label: '延迟优先', description: '选择响应最快的模型' },
   { value: 'fixed', label: '固定模型', description: '使用选定的指定模型' },
@@ -328,6 +341,11 @@ const modelSelectorVisible = ref(false)
 
 // 对话消息
 interface Message {
+  requestId?: string
+  vote?: number
+  reason?: string
+  comment?: string
+  feedbackLoading?: boolean
   role: string
   content: string
   thinking?: string
@@ -342,6 +360,35 @@ interface Message {
   pluginKey?: string
 }
 
+const feedbackVisible = ref(false)
+const feedbackTarget = ref<Message | null>(null)
+const feedbackReason = ref('')
+const feedbackComment = ref('')
+const openNegativeFeedback = (msg: Message) => {
+  feedbackTarget.value = msg
+  feedbackReason.value = msg.reason || ''
+  feedbackComment.value = msg.comment || ''
+  feedbackVisible.value = true
+}
+const submitFeedback = async (msg: Message, vote: number, reason?: string, comment?: string) => {
+  if (!msg.requestId || msg.feedbackLoading) return false
+  msg.feedbackLoading = true
+  try {
+    const response = await request.post('/internal/chat/feedback', {requestId:msg.requestId, vote, reason:reason || null, comment:comment || null}, {timeout:10000})
+    if (response.data.code !== 0) throw new Error(response.data.message || '反馈提交失败')
+    msg.vote = vote
+    msg.reason = response.data.data.reason
+    msg.comment = response.data.data.comment
+    message.success('感谢反馈')
+    return true
+  } catch (e) {
+    message.error(e instanceof Error ? e.message : '反馈提交失败，请重试')
+    return false
+  } finally { msg.feedbackLoading = false }
+}
+const confirmNegativeFeedback = async () => {
+  if (feedbackTarget.value && await submitFeedback(feedbackTarget.value, -1, feedbackReason.value, feedbackComment.value)) feedbackVisible.value = false
+}
 const messages = ref<Message[]>([])
 const inputMessage = ref('')
 const loading = ref(false)
@@ -667,7 +714,7 @@ const sendNormalMessage = async () => {
 
   // 如果启用了联网搜索，添加插件信息
   if (enableWebSearch.value) {
-    chatRequest.plugin_key = 'web_search'
+    chatRequest.enable_search = true
   }
 
   // 调用流式API
@@ -773,103 +820,59 @@ const processStream = async (response: Response) => {
   let buffer = ''
   let assistantContent = ''
   let thinkingContent = ''
+  let requestId: string | undefined
+  let finished = false
 
-  while (true) {
-    const { done, value } = await reader.read()
-    if (done) break
-
-    // 解码当前块，追加到缓冲区
-    buffer += decoder.decode(value, { stream: true })
-
-    // SSE 格式：每个消息以 \n\n 分隔
-    const parts = buffer.split('\n\n')
-    // 保留最后一个可能不完整的部分
-    buffer = parts.pop() || ''
-
-    // 处理完整的消息
-    for (const part of parts) {
-      const lines = part.split('\n')
-      for (const line of lines) {
-        if (line.startsWith('data:')) {
-          // 移除 'data:' 前缀
-          const data = line.substring(5).trim()
-
-          if (!data) {
-            continue
-          }
-
-          try {
-            // 解析 JSON 格式的 StreamResponse
-            const streamResponse: API.StreamResponse = JSON.parse(data)
-
-            // 检查是否结束（finishReason 为 "stop"）
-            if (streamResponse.choices && streamResponse.choices.length > 0) {
-              const choice = streamResponse.choices[0]
-
-              // 如果有 finishReason，表示流结束
-              if (choice.finishReason === 'stop') {
-                continue
-              }
-
-              const delta = choice.delta
-
-              // 处理深度思考内容
-              if (delta?.reasoningContent) {
-                thinkingContent += delta.reasoningContent
-                streamingThinking.value = thinkingContent
-              }
-
-              // 处理普通文本内容
-              if (delta?.content) {
-                assistantContent += delta.content
-                streamingContent.value = assistantContent
-              }
-            }
-          } catch (e) {
-            console.error('解析 SSE 数据失败:', data, e)
-          }
-        }
-      }
+  const consumeEvent = (part: string) => {
+    const data = part.split('\n').filter(line => line.startsWith('data:'))
+      .map(line => line.substring(5).trim()).join('\n')
+    if (!data || data === '[DONE]') return
+    let payload: API.StreamResponse & { error?: { message?: string }; code?: number; message?: string }
+    try {
+      payload = JSON.parse(data)
+    } catch {
+      throw new Error('收到无法解析的回答数据，请重试')
     }
+    if (payload.error) throw new Error(payload.error.message || '模型调用失败，请重试')
+    if (payload.code !== undefined && payload.code !== 0) throw new Error(payload.message || '请求失败')
+    requestId = payload.id || requestId
+    const choice = payload.choices?.[0]
+    if (!choice) return
+    if (choice.delta?.reasoningContent) {
+      thinkingContent += choice.delta.reasoningContent
+      streamingThinking.value = thinkingContent
+    }
+    if (choice.delta?.content) {
+      assistantContent += choice.delta.content
+      streamingContent.value = assistantContent
+    }
+    if (choice.finishReason === 'stop') finished = true
   }
 
-  // 处理缓冲区剩余数据
-  if (buffer) {
-    const lines = buffer.split('\n')
-    for (const line of lines) {
-      if (line.startsWith('data:')) {
-        const data = line.substring(5).trim()
-        if (data) {
-          try {
-            const streamResponse: API.StreamResponse = JSON.parse(data)
-            if (streamResponse.choices && streamResponse.choices.length > 0) {
-              const choice = streamResponse.choices[0]
-              // 如果有 finishReason，表示流结束
-              if (choice.finishReason === 'stop') {
-                continue
-              }
-              const delta = choice.delta
-              if (delta?.reasoningContent) {
-                thinkingContent += delta.reasoningContent
-                streamingThinking.value = thinkingContent
-              }
-              if (delta?.content) {
-                assistantContent += delta.content
-                streamingContent.value = assistantContent
-              }
-            }
-          } catch (e) {
-            console.error('解析剩余 SSE 数据失败:', data, e)
-          }
-        }
-      }
+  try {
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      buffer += decoder.decode(value, { stream: true })
+      buffer = buffer.replace(/\r\n/g, '\n')
+      const parts = buffer.split('\n\n')
+      buffer = parts.pop() || ''
+      for (const part of parts) consumeEvent(part)
     }
+    buffer += decoder.decode()
+    if (buffer.trim()) consumeEvent(buffer)
+  } finally {
+    reader.releaseLock()
+  }
+  if (!finished && !assistantContent && !thinkingContent) {
+    throw new Error('未收到模型回答，请重试或检查模型配置')
   }
 
   // 完成后添加到消息列表
   const msg: Message = {
     role: 'assistant',
     content: assistantContent,
+    requestId: finished ? requestId : undefined,
   }
 
   // 如果有思考内容，添加到消息中
@@ -879,6 +882,7 @@ const processStream = async (response: Response) => {
     msg.thinkingExpanded = false  // 默认收起
   }
 
+  if (!finished) message.warning('回答传输未正常结束，请重试')
   messages.value.push(msg)
   streamingContent.value = ''
   streamingThinking.value = ''

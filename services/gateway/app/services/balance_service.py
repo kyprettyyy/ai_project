@@ -80,6 +80,20 @@ class BalanceService:
         await self.db.commit()
         return True
 
+    async def admin_credit(self, user_id: int, amount: Decimal, reason: str, operator_id: int) -> Decimal:
+        if not reason.strip() or not amount.is_finite() or amount <= 0:
+            raise BusinessException(ErrorCode.PARAMS_ERROR, "请输入有效金额和调整原因")
+        user = await self.db.scalar(select(User).where(User.id == user_id, User.is_delete == 0).with_for_update().execution_options(populate_existing=True))
+        if user is None:
+            raise BusinessException(ErrorCode.NOT_FOUND_ERROR, "用户不存在")
+        before = Decimal(user.balance or 0)
+        user.balance = before + amount
+        self.db.add(BillingRecord(user_id=user_id, amount=amount, balance_before=before,
+            balance_after=user.balance, billing_type="admin_credit",
+            description=f"管理员 {operator_id} 发放额度：{reason.strip()}", create_time=datetime.utcnow()))
+        await self.db.commit()
+        return user.balance
+
     async def get_user_balance(self, user_id: int | None) -> Decimal:
         if user_id is None:
             return Decimal("0")

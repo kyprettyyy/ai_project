@@ -12,6 +12,8 @@ class CreateBatchTestRequest(BaseModel):
     name: Optional[str] = Field(None, description="任务名称")
     scene_id: str = Field(..., description="场景ID", alias="sceneId")
     models: List[str] = Field(..., description="测试的模型列表")
+    task_type: str = Field(default="general", alias="taskType", min_length=1, max_length=64,
+                           pattern=r"^[a-z][a-z0-9_]*$", description="画像任务类型，如 code、math、summarization")
     temperature: Optional[float] = Field(None, description="温度参数 (0.0-2.0)")
     top_p: Optional[float] = Field(None, description="Top P 参数", alias="topP")
     max_tokens: Optional[int] = Field(None, description="最大Token数", alias="maxTokens")

@@ -1,7 +1,7 @@
 """Capability-profile feedback endpoints."""
 
 from fastapi import APIRouter, Depends
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
@@ -11,7 +11,7 @@ router = APIRouter(prefix="/model-profiles", tags=["model-profiles"])
 
 
 class RebuildRequest(BaseModel):
-    evaluation_run_id: str | None = None
+    evaluation_run_id: str | None = Field(default=None, max_length=64)
 
 
 @router.post("/rebuild")

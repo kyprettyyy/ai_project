@@ -1,5 +1,6 @@
 """OpenAI-compatible discovery endpoints."""
 
+import json
 from fastapi import APIRouter, Depends, Header, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -22,7 +23,7 @@ async def list_models(authorization: str | None = Header(default=None), db: Asyn
         "id": item.model_key, "object": "model", "name": item.model_name,
         "description": item.description, "context_length": item.context_length,
         # Gateway prices are stored per 1K tokens; OpenAI-compatible discovery exposes per-token prices.
-        "pricing": {"prompt": str(float(item.input_price) / 1_000),
+        "pricing": {"currency": item.price_currency, "policy": json.loads(item.pricing_config) if item.pricing_config else None, "prompt": str(float(item.input_price) / 1_000),
                     "completion": str(float(item.output_price) / 1_000)},
         "architecture": {"modality": "text"},
     } for item in models]}

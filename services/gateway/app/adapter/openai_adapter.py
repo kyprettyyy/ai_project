@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from app.adapter.native_search import search_extra
+
 import time
 import uuid
 from collections.abc import AsyncGenerator, Iterable
@@ -61,7 +63,7 @@ class OpenAIAdapter(ModelAdapter):
             payload["temperature"] = chat_request.temperature
         if chat_request.max_tokens is not None:
             payload["max_tokens"] = chat_request.max_tokens
-        extra_body = self._build_reasoning_extra_body(model, provider, chat_request)
+        extra_body = {**self._build_reasoning_extra_body(model, provider, chat_request), **search_extra(model, provider, chat_request)}
         if extra_body:
             payload["extra_body"] = extra_body
 
@@ -126,7 +128,7 @@ class OpenAIAdapter(ModelAdapter):
         model_kwargs: dict = {}
         if stream:
             model_kwargs["stream_options"] = {"include_usage": True}
-        extra_body = self._build_reasoning_extra_body(model, provider, chat_request)
+        extra_body = {**self._build_reasoning_extra_body(model, provider, chat_request), **search_extra(model, provider, chat_request)}
         if extra_body:
             kwargs["extra_body"] = extra_body
         if model_kwargs:

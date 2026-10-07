@@ -808,6 +808,10 @@ const handleSearchModel = (value: string) => {
 }
 
 const handleDropdownChange = (visible: boolean) => {
+  if (visible) {
+    loadModels(undefined, false)
+    return
+  }
   if (!visible && currentSearchText.value) {
     currentSearchText.value = undefined
     currentPage.value = 1

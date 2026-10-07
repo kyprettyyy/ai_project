@@ -19,12 +19,12 @@ export default defineConfig(({ mode }) => ({
   server: {
     proxy: {
       '/api': {
-        target: 'http://localhost:8124',
+        target: 'http://127.0.0.1:8124',
         changeOrigin: true,
         secure: false,
       },
       '/api/ws': {
-        target: 'http://localhost:8124',
+        target: 'http://127.0.0.1:8124',
         changeOrigin: true,
         secure: false,
         ws: true,

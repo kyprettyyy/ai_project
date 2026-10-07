@@ -63,6 +63,7 @@
               </div>
             </template>
             <template v-else-if="column.key === 'outputText'">
+              <a-tag v-if="!record.outputText?.trim()" color="orange">空回答</a-tag>
               <div class="output-cell" @click="showFullContent(record)">
                 <a-typography-paragraph
                   :ellipsis="{ rows: 2, expandable: false }"
@@ -291,7 +292,7 @@ const resultColumns = [
     width: 220
   },
   {
-    title: '用户评分',
+    title: '人工评测评分',
     key: 'userRating',
     width: 150
   },

@@ -11,6 +11,7 @@ import json
 from dataclasses import asdict, dataclass, field
 from decimal import Decimal
 from typing import Iterable
+from app.routing.bayesian_feedback import estimate_feedback
 
 
 DEFAULT_WEIGHTS = {
@@ -26,6 +27,8 @@ DEFAULT_WEIGHTS = {
 
 @dataclass(slots=True)
 class RoutingContext:
+    user_id: int | None = None
+    preference_mode: str = "balanced"
     task_type: str = "general"
     estimated_input_tokens: int = 0
     expected_output_tokens: int = 1024
@@ -52,6 +55,8 @@ class RoutingContext:
 
     def snapshot(self) -> dict:
         return {
+            "feedbackAlgorithm": "beta-bernoulli-v1",
+            "preferenceMode": self.preference_mode,
             "taskType": self.task_type,
             "estimatedInputTokens": self.estimated_input_tokens,
             "expectedOutputTokens": self.expected_output_tokens,
@@ -78,6 +83,11 @@ class CandidateSignals:
     live_success_rate: float
     priority: int = 100
     capabilities: set[str] = field(default_factory=set)
+    satisfaction_score: float | None = None
+    satisfaction_samples: int = 0
+    satisfaction_source: str = "共享反馈"
+    feedback_prior_mean: float = .5
+    feedback_prior_strength: float = 2.
     quality_score: float = 0.5
     profile_latency_score: float = 0.5
     profile_cost_score: float = 0.5
@@ -108,8 +118,11 @@ class CandidateDecision:
     profile_version: int
     sample_count: int
 
+    feedback_estimate: dict | None = None
+
     def snapshot(self) -> dict:
         result = asdict(self)
+        result["feedbackEstimate"] = result.pop("feedback_estimate")
         result["modelId"] = result.pop("model_id")
         result["modelKey"] = result.pop("model_key")
         result["rejectionReasons"] = result.pop("rejection_reasons")
@@ -179,8 +192,15 @@ class ExplainableRouter:
             context_score = _clamp01(item.context_length / (required_tokens * 4))
             limit = context.effective_cost_limit
             budget = _clamp01(1.0 - float(estimated_cost / limit)) if limit else cost
+            routing_quality = quality
+            feedback_estimate = None
+            if item.satisfaction_score is not None and item.satisfaction_samples >= 30:
+                feedback_estimate = estimate_feedback(_clamp01(item.satisfaction_score)*item.satisfaction_samples,
+                    item.satisfaction_samples, item.feedback_prior_mean, item.feedback_prior_strength)
+                weight = feedback_estimate['routingWeight']
+                routing_quality = quality*(1-weight) + feedback_estimate['posteriorMean']*weight
             scores = {
-                "quality": quality,
+                "quality": routing_quality,
                 "latency": latency,
                 "cost": cost,
                 "reliability": reliability,
@@ -191,8 +211,15 @@ class ExplainableRouter:
             rejections = self._rejections(item, context, estimated_cost, quality, live_reliability)
             weighted = None if rejections else sum(scores[key] * normalized_weights[key] for key in DEFAULT_WEIGHTS)
             explanation = self._explain(item, context, scores, normalized_weights, rejections, estimated_cost, confidence)
+            if item.satisfaction_score is not None and item.satisfaction_samples >= 30:
+                explanation += (f"; {item.satisfaction_source}满意度：原始 {item.satisfaction_score:.1%}，"
+                    f"贝叶斯估计 {feedback_estimate['posteriorMean']:.1%}，后验标准差 {feedback_estimate['posteriorStdDev']:.1%}"
+                    f"（{item.satisfaction_samples} 条，质量路由分中占 {feedback_estimate['routingWeight']:.1%}，beta-bernoulli-v1）")
+            if feedback_estimate and feedback_estimate['priorConflict']:
+                explanation += '; 个人与群体反馈冲突，已回退中性先验'
             decisions.append(
                 CandidateDecision(
+                    feedback_estimate=feedback_estimate,
                     model_id=item.model_id,
                     model_key=item.model_key,
                     eligible=not rejections,

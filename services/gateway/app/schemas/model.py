@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from decimal import Decimal
+from typing import Literal
 
 from pydantic import Field
 
@@ -18,6 +19,7 @@ class ModelAddRequest(LongIdModel):
     context_length: int | None = Field(default=None, alias="contextLength")
     input_price: Decimal | None = Field(default=None, alias="inputPrice")
     output_price: Decimal | None = Field(default=None, alias="outputPrice")
+    price_currency: Literal["CNY", "USD", "UNKNOWN"] = Field(default="CNY", alias="priceCurrency")
     priority: int | None = None
     default_timeout: int | None = Field(default=None, alias="defaultTimeout")
     capabilities: str | None = None
@@ -29,6 +31,7 @@ class ModelUpdateRequest(LongIdModel):
     context_length: int | None = Field(default=None, alias="contextLength")
     input_price: Decimal | None = Field(default=None, alias="inputPrice")
     output_price: Decimal | None = Field(default=None, alias="outputPrice")
+    price_currency: Literal["CNY", "USD", "UNKNOWN"] | None = Field(default=None, alias="priceCurrency")
     status: str | None = None
     priority: int | None = None
     default_timeout: int | None = Field(default=None, alias="defaultTimeout")
@@ -54,6 +57,7 @@ class ModelVO(LongIdModel, TimeModel):
     context_length: int = Field(alias="contextLength")
     input_price: Decimal = Field(alias="inputPrice")
     output_price: Decimal = Field(alias="outputPrice")
+    price_currency: str = Field(default="UNKNOWN", alias="priceCurrency")
     status: str
     health_status: str = Field(alias="healthStatus")
     avg_latency: int = Field(alias="avgLatency")

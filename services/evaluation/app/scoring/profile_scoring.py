@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 from collections import defaultdict
 from datetime import datetime
 
@@ -14,7 +15,7 @@ def normalize_score(value: object, scale: float) -> float | None:
         number = float(value)
     except (TypeError, ValueError):
         return None
-    if scale <= 0:
+    if scale <= 0 or not math.isfinite(number):
         return None
     return max(0.0, min(1.0, number / scale))
 
@@ -27,7 +28,8 @@ def parse_ai_scores(value: object) -> tuple[float | None, float | None]:
             return None, None
     if not isinstance(value, dict):
         return None, None
-    judge = normalize_score(value.get("averageRating") or value.get("score"), 10.0)
+    judge_raw = value.get("averageRating")
+    judge = normalize_score(judge_raw if judge_raw is not None else value.get("score"), 10.0)
     correctness_raw = value.get("correctness")
     if correctness_raw is None:
         correctness_raw = value.get("correctnessScore")
@@ -89,35 +91,40 @@ def build_profiles(
             continue
         groups[(model, task_type_from_config(row.get("task_config")))].append(row)
 
-    aggregates: list[dict] = []
+    aggregates = []
     for (model, task_type), items in groups.items():
-        quality_values = [
-            score["combined"]
-            for score in (combined_quality(item) for item in items)
-            if score["combined"] is not None
-        ]
-        successes = [item for item in items if item.get("output_text") and not item.get("error_message")]
-        aggregates.append({
-            "model": model,
-            "task_type": task_type,
-            "sample_count": len(items),
-            "quality": sum(quality_values) / len(quality_values) if quality_values else 0.5,
-            "latency": sum(max(0.0, float(item.get("latency") or 0)) for item in items) / len(items),
-            "cost": sum(max(0.0, float(item.get("cost") or 0)) for item in items) / len(items),
-            "reliability": len(successes) / len(items),
-        })
-
-    max_latency = max((row["latency"] for row in aggregates), default=1.0) or 1.0
-    max_cost = max((row["cost"] for row in aggregates), default=0.000001) or 0.000001
-    timestamp = (evaluated_at or datetime.utcnow()).isoformat()
-    return [{
-        "model": row["model"],
-        "task_type": row["task_type"],
-        "quality_score": round(float(row["quality"]), 4),
-        "latency_score": round(max(0.0, 1.0 - float(row["latency"]) / max_latency), 4),
-        "cost_score": round(max(0.0, 1.0 - float(row["cost"]) / max_cost), 4),
-        "reliability_score": round(float(row["reliability"]), 4),
-        "sample_count": int(row["sample_count"]),
-        "evaluation_run_id": evaluation_run_id,
-        "evaluated_at": timestamp,
-    } for row in aggregates]
+        quality_values = [combined_quality(item)["combined"] for item in items
+                          if (item.get("output_text") or "").strip()
+                          and combined_quality(item)["combined"] is not None]
+        successes = [item for item in items if (item.get("output_text") or "").strip() and not item.get("error_message")]
+        latencies = [float(item["latency"]) for item in items if item.get("latency") is not None and float(item["latency"]) > 0]
+        costs = [float(item["cost"]) for item in items if item.get("cost") is not None
+                 and item.get("cost_currency") in ("CNY", "USD") and float(item["cost"]) >= 0]
+        currencies = {item["cost_currency"] for item in items if item.get("cost") is not None and item.get("cost_currency") in ("CNY", "USD")}
+        complete_cost = len(costs) == len(items) and len(currencies) == 1
+        aggregates.append({"model":model,"task_type":task_type,"sample_count":len(items),
+            "quality":sum(quality_values)/len(quality_values) if quality_values else None,
+            "latency":sum(latencies)/len(latencies) if latencies else None,
+            "cost":sum(costs)/len(costs) if complete_cost else None,
+            "currency":next(iter(currencies)) if len(currencies)==1 else None,
+            "reliability":len(successes)/len(items),
+            "coverage":{"ratedSamples":len(quality_values),"emptySamples":len(items)-len(successes),
+                        "latencySamples":len(latencies),"costSamples":len(costs),
+                        "costComplete":complete_cost,"costCurrency":next(iter(currencies)) if len(currencies)==1 else None}})
+    # Compare costs only within the same task and currency. Unknown cost is neutral,
+    # never interpreted as free or as maximum cost efficiency.
+    timestamp=(evaluated_at or datetime.utcnow()).isoformat()
+    profiles=[]
+    for row in aggregates:
+        peers=[r for r in aggregates if r["task_type"]==row["task_type"]]
+        max_latency=max((r["latency"] for r in peers if r["latency"] is not None),default=1) or 1
+        max_cost=max((r["cost"] for r in peers if r["cost"] is not None and r["currency"]==row["currency"]),default=1) or 1
+        cost_peers=[r for r in peers if r["cost"] is not None and r["currency"]==row["currency"]]
+        row["coverage"]["costComparable"]=row["cost"] is not None and len(cost_peers)>=2
+        profiles.append({"model":row["model"],"task_type":row["task_type"],
+            "quality_score":round(row["quality"],4) if row["quality"] is not None else .5,
+            "latency_score":round(max(0,1-row["latency"]/max_latency),4) if row["latency"] is not None else .5,
+            "cost_score":round(max(0,1-row["cost"]/max_cost),4) if row["coverage"]["costComparable"] else .5,
+            "reliability_score":round(row["reliability"],4),"sample_count":row["sample_count"],
+            "coverage":row["coverage"],"evaluation_run_id":evaluation_run_id,"evaluated_at":timestamp})
+    return profiles

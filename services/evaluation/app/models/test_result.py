@@ -28,6 +28,8 @@ class TestResult(Base):
     input_tokens = Column('inputTokens', Integer, nullable=True, comment='输入Token数')
     output_tokens = Column('outputTokens', Integer, nullable=True, comment='输出Token数')
     cost = Column('cost', DECIMAL(10, 6), nullable=True, comment='成本(USD)')
+    cost_currency = Column("costCurrency", String(8), nullable=False, default="UNKNOWN", server_default="UNKNOWN")
+    pricing_snapshot = Column("pricingSnapshot", Text, nullable=True)
     user_rating = Column('userRating', Integer, nullable=True, comment='用户评分(1-5)')
     ai_score = Column('aiScore', Text, nullable=True, comment='AI评分详情(JSON)')
     create_time = Column('createTime', DateTime, nullable=False, default=datetime.now, comment='创建时间')

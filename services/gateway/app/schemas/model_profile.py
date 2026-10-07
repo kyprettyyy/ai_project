@@ -12,6 +12,7 @@ class ModelProfileUpsert(BaseModel):
     latency_score: float = Field(ge=0, le=1)
     cost_score: float = Field(ge=0, le=1)
     reliability_score: float = Field(ge=0, le=1)
+    coverage: dict | None = None
     sample_count: int = Field(default=0, ge=0)
     evaluation_run_id: str | None = None
     evaluated_at: datetime | None = None

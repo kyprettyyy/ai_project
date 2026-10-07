@@ -80,10 +80,10 @@
           {{ formatNumber(record.contextLength) }}
         </template>
         <template v-else-if="column.dataIndex === 'inputPrice'">
-          ${{ record.inputPrice?.toFixed(4) || '0.0000' }}
+          ${{ formatPrice(record.inputPrice) }}
         </template>
         <template v-else-if="column.dataIndex === 'outputPrice'">
-          ${{ record.outputPrice?.toFixed(4) || '0.0000' }}
+          ${{ formatPrice(record.outputPrice) }}
         </template>
         <template v-else-if="column.dataIndex === 'userTotalTokens'">
           <span :class="{ 'highlight-value': Number(record.userTotalTokens) > 0 }">
@@ -234,7 +234,21 @@ const formatCostDetail = (num: number) => {
   return num.toFixed(6)
 }
 
+const formatPrice = (value: unknown) => {
+  const number = Number(value)
+  return Number.isFinite(number) ? number.toFixed(4) : '-'
+}
+
+const normalizeTags = (value: unknown): string[] => {
+  if (Array.isArray(value)) return value.filter((tag): tag is string => typeof tag === 'string')
+  if (typeof value === 'string') {
+    try { return normalizeTags(JSON.parse(value)) } catch { return [] }
+  }
+  return []
+}
+
 const fetchData = async () => {
+  if (loading.value) return
   loading.value = true
   try {
     const res = await listModels({
@@ -242,10 +256,12 @@ const fetchData = async () => {
       pageSize: searchParams.pageSize,
       searchText: searchParams.searchText || undefined,
       provider: searchParams.provider || undefined,
-    })
-    if (res.data?.data) {
-      data.value = res.data.data.records ?? []
-      total.value = res.data.data.totalRow ?? 0
+    }, { timeout: 10000 })
+    if (res.data?.code === 0 && res.data?.data) {
+      data.value = (res.data.data.records ?? []).map((item) => ({
+        ...item, tags: normalizeTags(item.tags)
+      }))
+      total.value = Number((res.data.data as any).total ?? res.data.data.totalRow ?? 0)
 
       // 提取所有提供商用于筛选
       const providerSet = new Set<string>()
@@ -302,7 +318,7 @@ const handleReset = () => {
 
 const formatNumber = (num: number | undefined) => {
   if (num === undefined || num === null) return '-'
-  return num.toLocaleString()
+  return Number(num).toLocaleString()
 }
 
 const getProviderIcon = (provider: string) => {

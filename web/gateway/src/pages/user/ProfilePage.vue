@@ -178,7 +178,7 @@
               <template v-if="column.dataIndex === 'amount'">
                 <!-- 充值显示正数（绿色），消费显示负数（红色） -->
                 <span
-                  v-if="record.billingType === 'recharge'"
+                  v-if="['recharge', 'admin_credit'].includes(record.billingType)"
                   style="color: #52c41a; font-weight: bold"
                 >
                   +¥{{ record.amount?.toFixed(4) }}
@@ -197,6 +197,7 @@
                 <a-tag v-else-if="record.billingType === 'recharge'" color="green">
                   充值
                 </a-tag>
+                <a-tag v-else-if="record.billingType === 'admin_credit'" color="blue">管理员发放</a-tag>
                 <a-tag v-else>{{ record.billingType }}</a-tag>
               </template>
             </template>

@@ -6,6 +6,9 @@ const ArenaLayout = () =>
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
   routes: [
+    { path: '/online-feedback', component: ArenaLayout, children: [
+      { path: '', name: '线上用户反馈', component: () => import('@/pages/OnlineFeedbackPage.vue') },
+    ] },
     {
       path: '/',
       redirect: '/side-by-side',

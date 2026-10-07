@@ -19,6 +19,7 @@ import ImageGenerationPage from '@/pages/ImageGenerationPage.vue'
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
   routes: [
+    {path:'/routing-analysis',name:'路由分析',component:()=>import('@/pages/RoutingAnalysisPage.vue')},
     {
       path: '/',
       name: '主页',

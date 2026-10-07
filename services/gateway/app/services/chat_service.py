@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import json
 import time
 import uuid
 from collections.abc import AsyncGenerator
@@ -32,6 +33,7 @@ from app.services.billing_service import BillingService
 from app.services.cache_service import CacheService
 from app.services.quota_service import QuotaService
 from app.services.request_log_service import RequestLogService
+from app.services.answer_feedback_service import AnswerFeedbackService
 from app.services.routing_service import RoutingService
 from app.services.user_service import UserService
 from app.services.plugin_service import PluginService
@@ -99,13 +101,20 @@ class ChatService:
                     )
         else:
             logger.info("BYOK 模式：用户 %s 跳过余额和配额检查", user_id)
-        cached_response = await self.cache_service.get_cached_response(chat_request)
+        cached_response = (None if chat_request.enable_search else await self.cache_service.get_cached_response(chat_request))
         if cached_response is not None:
-            await self.request_log_service.log_request(
+            cached_response = cached_response.model_copy(deep=True)
+            from sqlalchemy import select
+            cached_model = await self.db.scalar(select(Model).where(
+                Model.model_key == cached_response.model, Model.is_delete == 0))
+            request_log = await self.request_log_service.log_request(
                 trace_id=trace_id,
                 user_id=user_id,
                 api_key_id=api_key_id,
-                model_name=requested_model or cached_response.model,
+                model_name=cached_response.model,
+                model_id=cached_model.id if cached_model else None,
+                task_type=chat_request.task_type or "general",
+                evaluation_run_id=chat_request.evaluation_run_id,
                 request_model=requested_model or cached_response.model,
                 prompt_tokens=0,
                 completion_tokens=0,
@@ -119,6 +128,13 @@ class ChatService:
                 client_ip=client_ip,
                 user_agent=user_agent,
             )
+            cached_response.id = trace_id
+            cached_response.gateway = GatewayMetadata(
+                traceId=trace_id, strategy="cache", taskType=chat_request.task_type or "general",
+                latencyMs=int((time.perf_counter() - start) * 1000), cost=0)
+            await AnswerFeedbackService(self.db).save_answer(
+                request_log, chat_request.messages,
+                cached_response.choices[0].message.content or "" if cached_response.choices else "")
             return cached_response
         fallback_models = await self.routing_service.get_fallback_models(
             strategy_type, MODEL_TYPE_CHAT, requested_model,
@@ -158,6 +174,8 @@ class ChatService:
                 source="api" if api_key_id else "web",
                 client_ip=client_ip,
                 user_agent=user_agent,
+                evaluation_run_id=chat_request.evaluation_run_id,
+                task_type=chat_request.task_type or "general",
             )
             raise BusinessException(ErrorCode.SYSTEM_ERROR, f"调用模型失败: {exc}") from exc
 
@@ -177,6 +195,11 @@ class ChatService:
         completion_tokens = 0
         created = int(time.time())
         first_chunk = True
+        answer_parts = []
+        model = None
+        provider = None
+        is_byok = False
+        response_logged = False
         try:
             if chat_request.plugin_key:
                 chat_request = await self._inject_plugin_context(chat_request, user_id)
@@ -239,6 +262,8 @@ class ChatService:
                 if not chunk.text and not chunk.reasoning_content:
                     continue
 
+                if chunk.text:
+                    answer_parts.append(chunk.text)
                 delta = StreamDelta(
                     role="assistant" if first_chunk else None,
                     content=chunk.text,
@@ -267,7 +292,6 @@ class ChatService:
                     )
                 ],
             )
-            yield f"data: {finish_response.model_dump_json(by_alias=True)}\n\n"
             stream_cost = BillingService.calculate_cost_from_model(
                 model, prompt_tokens, completion_tokens
             )
@@ -290,10 +314,16 @@ class ChatService:
                 client_ip=client_ip,
                 user_agent=user_agent,
                 cost=stream_cost,
+                cost_currency=model.price_currency,
+                search_enabled=chat_request.enable_search,
+                is_byok=is_byok,
                 evaluation_run_id=chat_request.evaluation_run_id,
                 task_type=chat_request.task_type or "general",
                 provider_name=provider.provider_name,
             )
+            response_logged = True
+            await AnswerFeedbackService(self.db).save_answer(
+                request_log, chat_request.messages, "".join(answer_parts))
             if user_id and prompt_tokens + completion_tokens > 0 and not is_byok:
                 await self.quota_service.deduct_tokens(user_id, prompt_tokens + completion_tokens)
                 cost = stream_cost
@@ -306,16 +336,22 @@ class ChatService:
                     await self.balance_service.deduct_balance(user_id, cost, request_log.id, description)
             elif is_byok:
                 logger.info("BYOK 模式（流式）：用户 %s 使用自己的密钥，不扣减余额和配额", user_id)
+            yield f"data: {finish_response.model_dump_json(by_alias=True)}\n\n"
+            yield "data: [DONE]\n\n"
         except Exception as exc:
             request_log = await self.request_log_service.log_request(
                 trace_id=trace_id,
                 user_id=user_id,
                 api_key_id=api_key_id,
-                model_name=requested_model or "",
+                model_id=model.id if model else None,
+                model_name=model.model_key if model else (requested_model or ""),
+                provider_name=provider.provider_name if provider else None,
+                search_enabled=chat_request.enable_search,
+                is_byok=is_byok,
                 request_model=requested_model,
-                prompt_tokens=0,
-                completion_tokens=0,
-                total_tokens=0,
+                prompt_tokens=0 if response_logged else prompt_tokens,
+                completion_tokens=0 if response_logged else completion_tokens,
+                total_tokens=0 if response_logged else prompt_tokens + completion_tokens,
                 duration=int((time.perf_counter() - start) * 1000),
                 status=REQUEST_STATUS_FAILED,
                 error_message=str(exc),
@@ -325,8 +361,14 @@ class ChatService:
                 source="api" if api_key_id else "web",
                 client_ip=client_ip,
                 user_agent=user_agent,
+                evaluation_run_id=chat_request.evaluation_run_id,
+                task_type=chat_request.task_type or "general",
             )
             logger.error("流式调用模型失败: %s", exc, exc_info=True)
+            error = {"code": exc.code if isinstance(exc, BusinessException) else ErrorCode.SYSTEM_ERROR,
+                     "message": exc.message if isinstance(exc, BusinessException) else "模型调用失败，请稍后重试",
+                     "type": "gateway_error"}
+            yield "event: error\ndata: " + json.dumps({"error": error}, ensure_ascii=False) + "\n\n"
             return
 
     async def _invoke_with_fallback(
@@ -440,6 +482,9 @@ class ChatService:
                 client_ip=client_ip,
                 user_agent=user_agent,
                 cost=request_cost,
+                cost_currency=model.price_currency,
+                search_enabled=chat_request.enable_search,
+                is_byok=is_byok,
                 evaluation_run_id=chat_request.evaluation_run_id,
                 task_type=chat_request.task_type or "general",
                 provider_name=provider.provider_name,
@@ -456,7 +501,12 @@ class ChatService:
                     await self.balance_service.deduct_balance(user_id, cost, request_log.id, description)
             elif is_byok:
                 logger.info("BYOK 模式：用户 %s 使用自己的密钥，不扣减余额和配额", user_id)
-            await self.cache_service.cache_response(chat_request, response)
+            response.id = trace_id
+            await AnswerFeedbackService(self.db).save_answer(
+                request_log, chat_request.messages,
+                response.choices[0].message.content or "" if response.choices else "")
+            if not chat_request.enable_search:
+                await self.cache_service.cache_response(chat_request, response)
             response.gateway = GatewayMetadata(
                 traceId=trace_id,
                 provider=provider.provider_name,
@@ -491,16 +541,18 @@ class ChatService:
                 source="api" if api_key_id else "web",
                 client_ip=client_ip,
                 user_agent=user_agent,
+                evaluation_run_id=chat_request.evaluation_run_id,
+                task_type=chat_request.task_type or "general",
             )
             raise
 
     @staticmethod
     def _determine_strategy_type(requested_strategy: str | None, requested_model: str | None) -> str:
         if requested_strategy:
-            return requested_strategy
+            return ROUTING_STRATEGY_AUTO if requested_strategy == ROUTING_STRATEGY_ADAPTIVE else requested_strategy
         if requested_model:
             return ROUTING_STRATEGY_FIXED
-        return ROUTING_STRATEGY_ADAPTIVE
+        return ROUTING_STRATEGY_AUTO
 
     async def _build_routing_context(self, chat_request: ChatRequest, user_id: int) -> RoutingContext:
         constraints = chat_request.routing_constraints
@@ -517,6 +569,7 @@ class ChatService:
         balance = await self.balance_service.get_user_balance(user_id) if user_id else None
         budget_remaining = balance if balance is not None and balance > Decimal("0") else None
         return RoutingContext(
+            user_id=None if chat_request.evaluation_run_id else user_id,
             task_type=chat_request.task_type or "general",
             estimated_input_tokens=estimated_input_tokens,
             expected_output_tokens=expected_output_tokens,
@@ -529,7 +582,7 @@ class ChatService:
             min_quality=constraints.min_quality if constraints else None,
             max_latency_ms=constraints.max_latency_ms if constraints else None,
             min_success_rate=constraints.min_success_rate if constraints else None,
-            required_capabilities={
+            required_capabilities=({"native_search"} if chat_request.enable_search else set()) | {
                 item.strip().lower()
                 for item in (constraints.required_capabilities if constraints else [])
                 if item.strip()
@@ -539,6 +592,10 @@ class ChatService:
 
     async def _inject_plugin_context(self, chat_request: ChatRequest, user_id: int) -> ChatRequest:
         plugin_key = chat_request.plugin_key
+        if plugin_key == "web_search":
+            chat_request.enable_search = True
+            chat_request.plugin_key = None
+            return chat_request
         if not plugin_key:
             return chat_request
         user_input = ""

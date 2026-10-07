@@ -7,10 +7,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.common.result_utils import success
 from app.db.session import get_db_session
-from app.middleware.auth import require_login
+from app.middleware.auth import require_login, require_role
+from app.core.constants import UserRole
 from app.models.user import User
 from app.schemas.common import BaseResponse, PageData
-from app.schemas.payment import BalanceVO, BillingRecordVO
+from app.schemas.payment import BalanceVO, BillingRecordVO, AdminCreditRequest
 from app.services.balance_service import BalanceService
 from app.services.billing_record_service import BillingRecordService
 
@@ -45,3 +46,13 @@ async def get_my_billing_records(
 ) -> BaseResponse[PageData[BillingRecordVO]]:
     data = await BillingRecordService(db).list_user_billing_records(login_user.id, page_num, page_size)
     return success(data)
+
+
+@router.post("/admin/credit")
+async def admin_credit_balance(
+    body: AdminCreditRequest,
+    admin: User = Depends(require_role(UserRole.ADMIN)),
+    db: AsyncSession = Depends(get_db_session),
+):
+    balance = await BalanceService(db).admin_credit(body.user_id, body.amount, body.reason, admin.id)
+    return success({"balance": str(balance)})

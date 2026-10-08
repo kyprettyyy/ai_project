@@ -4,12 +4,11 @@ from pathlib import Path
 from datetime import datetime,timezone
 ROOT=Path(__file__).resolve().parents[1]
 sys.path[:0]=[str(ROOT),str(ROOT/'services/evaluation')]
-from dotenv import dotenv_values
-import pymysql,httpx
 from experiments.run_gateway_validation import MODELS,VALIDATION_IDS,digest
 TRAINING_IDS={'math':'e66b42fa-2859-498a-a0f7-6ba3b6e04fc6','classification':'f7bbbda2-4b71-4a52-b397-090263db6ebe','code':'518a98b0-48fc-4a9b-a6e4-a84466f50792','summarization':'9289069f-beed-4850-8e21-19ca80188c39'}
 
 def connect(e):
+ import pymysql
  return pymysql.connect(host=e['DB_HOST'],port=int(e['DB_PORT']),user=e['DB_USER'],password=e['DB_PASSWORD'],database=e['DB_NAME'],cursorclass=pymysql.cursors.DictCursor)
 
 def state(output,stage,**extra):
@@ -51,6 +50,8 @@ def training_profiles(records,prices, *, allow_partial=False):
  return profiles,snapshot
 
 def main():
+ from dotenv import dotenv_values
+ import httpx
  p=argparse.ArgumentParser();p.add_argument('--output',type=Path,required=True);p.add_argument('--dataset',type=Path,required=True);p.add_argument('--run',action='store_true');a=p.parse_args();a.output.mkdir(parents=True,exist_ok=True)
  with (a.output/'workflow.lock').open('w') as lock:
   try:fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)

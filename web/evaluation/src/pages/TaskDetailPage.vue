@@ -16,6 +16,11 @@
         <a-descriptions-item label="完成时间">{{ task?.completedAt || '-' }}</a-descriptions-item>
       </a-descriptions>
 
+      <a-space v-if="task?.restartOf || task?.resumeCount" style="margin-bottom:12px">
+        <a-tag v-if="task?.restartOf" color="purple">重跑 {{ task.restartCount }} 次</a-tag>
+        <a-tag v-if="task?.resumeCount" color="orange">继续重试 {{ task.resumeCount }} 次</a-tag>
+        <a v-if="task?.restartOf" @click="router.push(`/batch-test/detail/${task.restartOf}`)">查看原任务</a>
+      </a-space>
       <a-progress
         v-if="task"
         :percent="getProgressPercent(task)"
@@ -25,7 +30,7 @@
 
       <div style="margin-top: 16px">
         <a-button
-          v-if="task?.status === 'completed'"
+          v-if="task && ['completed', 'failed', 'cancelled'].includes(task.status)"
           type="primary"
           style="margin-left: 8px"
           @click="handleViewReport"
@@ -33,12 +38,22 @@
           查看报告
         </a-button>
         <a-button style="margin-left: 8px" @click="handleCopyTask">
-          重新测试
+          从头重新测试
         </a-button>
+        <a-button v-if="task && ['failed', 'cancelled'].includes(task.status)" type="primary"
+          style="margin-left: 8px" :loading="resuming" @click="handleResume">继续重试</a-button>
+        <a-button v-if="task && ['completed', 'failed', 'cancelled'].includes(task.status)" style="margin-left: 8px" :loading="scoring || task.scoringProgress?.status === 'running'" @click="handleScoreMissing">补充 AI 评分</a-button>
         <a-button style="margin-left: 8px" @click="handleBack">
           返回列表
         </a-button>
       </div>
+      <a-alert v-if="task?.scoringProgress" style="margin-top:16px" type="info" show-icon
+        :message="`补评分：${task.scoringProgress.status === 'running' ? '进行中' : task.scoringProgress.status === 'completed' ? '已完成' : '部分失败或中断'} · 已处理 ${task.scoringProgress.processed}/${task.scoringProgress.total} · 新增 ${task.scoringProgress.succeeded} · 失败 ${task.scoringProgress.failed}`" />
+      <a-collapse v-if="task?.scoringProgress?.errors?.length" style="margin-top:8px">
+        <a-collapse-panel key="errors" header="查看补评分失败原因">
+          <p v-for="(item, index) in task.scoringProgress.errors" :key="index">{{ item.resultId }}：{{ item.message }}</p>
+        </a-collapse-panel>
+      </a-collapse>
     </a-card>
 
     <a-card title="测试结果" :bordered="false" style="margin-top: 16px">
@@ -80,7 +95,7 @@
               <div class="metrics-cell">
                 <div>响应时间: {{ record.responseTimeMs }}ms</div>
                 <div>Token: {{ record.inputTokens }}/{{ record.outputTokens }}</div>
-                <div>成本: ${{ record.cost?.toFixed(6) || '0.000000' }}</div>
+                <div>成本: {{ formatCny(record.cost, record.costCurrency || 'UNKNOWN') }}</div>
               </div>
             </template>
             <template v-else-if="column.key === 'userRating'">
@@ -124,7 +139,7 @@
             <div class="modal-metrics">
               <span>响应时间: {{ selectedRecord.responseTimeMs }}ms</span>
               <span>Token: {{ selectedRecord.inputTokens }}/{{ selectedRecord.outputTokens }}</span>
-              <span>成本: ${{ selectedRecord.cost?.toFixed(6) || '0.000000' }}</span>
+              <span>成本: {{ formatCny(selectedRecord.cost, selectedRecord.costCurrency || 'UNKNOWN') }}</span>
             </div>
           </div>
         </div>
@@ -249,17 +264,47 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { formatCny } from '@/utils/currency'
+import { ref, onMounted, onUnmounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { message } from 'ant-design-vue'
 import {
   getTask,
+  scoreMissing,
+  resumeTask,
+  restartTask,
   getTaskResults,
   updateTestResultRating,
   type TestTask,
   type TestResult
 } from '@/api/batchTestController'
 import MarkdownRenderer from '@/components/MarkdownRenderer.vue'
+
+const scoring = ref(false)
+const handleScoreMissing = async () => {
+  if (!task.value || scoring.value) return
+  scoring.value = true
+  try {
+    const res = await scoreMissing(task.value.id)
+    if (res.data?.code !== 0) throw new Error(res.data?.message || '补评分失败')
+    message.success(res.data.data.total ? `开始补充 ${res.data.data.total} 条评分，原答案和已有分数保留` : '没有需要补评分的非空答案')
+    await loadTask()
+  } catch (e: any) { message.error(e.message || '补评分失败') }
+  finally { scoring.value = false }
+}
+const resuming = ref(false)
+const handleResume = async () => {
+  if (!task.value || resuming.value) return
+  resuming.value = true
+  try {
+    const res = await resumeTask(task.value.id)
+    if (res.data?.code !== 0) throw new Error(res.data?.message || '继续重试失败')
+    message.success(`保留 ${res.data.data.retainedResults} 条结果，重试 ${res.data.data.retrySubtasks} 项`)
+    await loadTask()
+    await loadResults()
+  } catch (e: any) { message.error(e.message || '继续重试失败') }
+  finally { resuming.value = false }
+}
 
 const router = useRouter()
 const route = useRoute()
@@ -382,24 +427,29 @@ const handleBack = () => {
   router.push('/batch-test/list')
 }
 
-const handleCopyTask = () => {
-  const taskId = route.params.id as string
-  router.push({
-    path: '/batch-test/create',
-    query: {
-      copyFrom: taskId
+const restartingTask = ref(false)
+const handleCopyTask = async () => {
+  if (restartingTask.value) return
+  restartingTask.value = true
+  try {
+    const res = await restartTask(route.params.id as string)
+    if (res.data?.code === 0 && res.data.data) {
+      message.success('已按原配置开始从头测试，原结果已保留')
+      router.push(`/batch-test/detail/${res.data.data}`)
+    } else {
+      message.error(res.data?.message || '重新测试失败')
     }
-  })
+  } catch (error: any) {
+    message.error(error.response?.data?.message || error.message || '重新测试失败')
+  } finally {
+    restartingTask.value = false
+  }
 }
 
 const handleViewReport = () => {
   const taskId = route.params.id as string
   if (!taskId) {
     message.error('任务ID不存在')
-    return
-  }
-  if (task.value?.status !== 'completed') {
-    message.warning('任务未完成，暂无报告')
     return
   }
   router.push(`/batch-test/report/${taskId}`)
@@ -530,10 +580,22 @@ const getAiScoreData = (aiScoreJson: string | undefined): AIScoreData | null => 
   }
 }
 
+let scoringPoll: ReturnType<typeof setInterval>
+let polling = false
 onMounted(() => {
   loadTask()
   loadResults()
+  scoringPoll = setInterval(async () => {
+    if (polling) return
+    polling = true
+    try {
+      const wasRunning = task.value?.scoringProgress?.status === 'running'
+      await loadTask()
+      if (wasRunning || task.value?.scoringProgress?.status === 'running') await loadResults()
+    } finally { polling = false }
+  }, 3000)
 })
+onUnmounted(() => clearInterval(scoringPoll))
 </script>
 
 <style scoped>

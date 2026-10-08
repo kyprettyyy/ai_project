@@ -326,7 +326,7 @@
                   </span>
                   <div class="stats">
                     <span v-if="resp.responseTimeMs">{{ (resp.responseTimeMs / 1000).toFixed(2) }}s</span>
-                    <span v-if="resp.cost">${{ resp.cost.toFixed(4) }}</span>
+                    <span v-if="resp.cost">{{ formatCny(resp.cost, 'CNY') }}</span>
                   </div>
                 </div>
                 <div class="response-content">
@@ -818,6 +818,7 @@
 </template>
 
 <script setup lang="ts">
+import { formatCny } from '@/utils/currency'
 import { ref, computed, onMounted, nextTick, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { message } from 'ant-design-vue'

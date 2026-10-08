@@ -101,7 +101,7 @@ class ChatService:
                     )
         else:
             logger.info("BYOK 模式：用户 %s 跳过余额和配额检查", user_id)
-        cached_response = (None if chat_request.enable_search else await self.cache_service.get_cached_response(chat_request))
+        cached_response = (None if (chat_request.enable_search or chat_request.evaluation_run_id) else await self.cache_service.get_cached_response(chat_request))
         if cached_response is not None:
             cached_response = cached_response.model_copy(deep=True)
             from sqlalchemy import select
@@ -136,7 +136,7 @@ class ChatService:
                 request_log, chat_request.messages,
                 cached_response.choices[0].message.content or "" if cached_response.choices else "")
             return cached_response
-        fallback_models = await self.routing_service.get_fallback_models(
+        fallback_models = [] if (chat_request.evaluation_run_id and requested_model) else await self.routing_service.get_fallback_models(
             strategy_type, MODEL_TYPE_CHAT, requested_model,
             task_type=chat_request.task_type or "general",
             weights=chat_request.routing_weights,
@@ -505,7 +505,7 @@ class ChatService:
             await AnswerFeedbackService(self.db).save_answer(
                 request_log, chat_request.messages,
                 response.choices[0].message.content or "" if response.choices else "")
-            if not chat_request.enable_search:
+            if not chat_request.enable_search and not chat_request.evaluation_run_id:
                 await self.cache_service.cache_response(chat_request, response)
             response.gateway = GatewayMetadata(
                 traceId=trace_id,

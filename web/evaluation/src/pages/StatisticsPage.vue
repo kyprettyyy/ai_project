@@ -25,7 +25,7 @@
           <div class="realtime-item">
             <div class="realtime-label">今日消耗</div>
             <div class="realtime-value" :class="getDailyStatusClass()">
-              ${{ realtimeCost?.todayCost?.toFixed(4) || '0.0000' }}
+              {{ formatCny(realtimeCost?.todayCost, 'CNY') }}
             </div>
             <a-progress
               v-if="realtimeCost?.dailyBudget"
@@ -35,7 +35,7 @@
               size="small"
             />
             <div v-if="realtimeCost?.dailyBudget" class="budget-limit-text">
-              预算: ${{ realtimeCost.dailyBudget.toFixed(2) }}
+              预算: {{ formatCny(realtimeCost.dailyBudget, 'CNY') }}
             </div>
           </div>
         </a-col>
@@ -43,7 +43,7 @@
           <div class="realtime-item">
             <div class="realtime-label">本月消耗</div>
             <div class="realtime-value" :class="getMonthlyStatusClass()">
-              ${{ realtimeCost?.monthCost?.toFixed(4) || '0.0000' }}
+              {{ formatCny(realtimeCost?.monthCost, 'CNY') }}
             </div>
             <a-progress
               v-if="realtimeCost?.monthlyBudget"
@@ -53,7 +53,7 @@
               size="small"
             />
             <div v-if="realtimeCost?.monthlyBudget" class="budget-limit-text">
-              预算: ${{ realtimeCost.monthlyBudget.toFixed(2) }}
+              预算: {{ formatCny(realtimeCost.monthlyBudget, 'CNY') }}
             </div>
           </div>
         </a-col>
@@ -70,7 +70,7 @@
           <div class="realtime-item">
             <div class="realtime-label">平均成本/次</div>
             <div class="realtime-value avg-cost-value">
-              ${{ realtimeCost?.avgCostPerCall?.toFixed(6) || '0.000000' }}
+              {{ formatCny(realtimeCost?.avgCostPerCall, 'CNY') }}
             </div>
             <div class="realtime-sub">
               <a-tag :color="getBudgetStatusColor()">{{ realtimeCost?.budgetMessage || '预算充足' }}</a-tag>
@@ -88,7 +88,7 @@
             title="总花费"
             :value="costStats?.totalCost || 0"
             :precision="4"
-            prefix="$"
+            prefix="¥"
             :value-style="{ color: '#1890ff' }"
           />
         </a-card>
@@ -99,11 +99,11 @@
             title="今日花费"
             :value="costStats?.todayCost || 0"
             :precision="4"
-            prefix="$"
+            prefix="¥"
             :value-style="{ color: todayBudgetColor }"
           />
           <div v-if="budgetStatus?.dailyBudget" class="budget-info">
-            预算: ${{ budgetStatus.dailyBudget?.toFixed(2) }}
+            预算: {{ formatCny(budgetStatus.dailyBudget, 'CNY') }}
             ({{ budgetStatus.dailyUsagePercent?.toFixed(0) || 0 }}%)
           </div>
         </a-card>
@@ -114,11 +114,11 @@
             title="本月花费"
             :value="costStats?.monthCost || 0"
             :precision="4"
-            prefix="$"
+            prefix="¥"
             :value-style="{ color: monthBudgetColor }"
           />
           <div v-if="budgetStatus?.monthlyBudget" class="budget-info">
-            预算: ${{ budgetStatus.monthlyBudget?.toFixed(2) }}
+            预算: {{ formatCny(budgetStatus.monthlyBudget, 'CNY') }}
             ({{ budgetStatus.monthlyUsagePercent?.toFixed(0) || 0 }}%)
           </div>
         </a-card>
@@ -261,6 +261,7 @@
 </template>
 
 <script setup lang="ts">
+import { formatCny } from '@/utils/currency'
 import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { message } from 'ant-design-vue'
 import { SettingOutlined, DashboardOutlined, ReloadOutlined } from '@ant-design/icons-vue'

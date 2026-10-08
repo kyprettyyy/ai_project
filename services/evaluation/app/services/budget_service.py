@@ -211,13 +211,13 @@ async def check_budget(
         daily_usage_percent = (today_cost * 100 / daily_budget).quantize(Decimal("0.01"))
         if today_cost >= daily_budget:
             return BudgetStatusVO.exceeded(
-                f"今日预算已用完（{today_cost:.2f} / {daily_budget:.2f} USD）",
+                f"今日预算已用完（{today_cost:.2f} / {daily_budget:.2f} 元）",
                 today_cost, month_cost, daily_budget, monthly_budget,
                 daily_usage_percent=daily_usage_percent
             )
         if daily_usage_percent >= alert_threshold:
             return BudgetStatusVO.warning(
-                f"今日预算已使用 {daily_usage_percent:.0f}%（{today_cost:.2f} / {daily_budget:.2f} USD）",
+                f"今日预算已使用 {daily_usage_percent:.0f}%（{today_cost:.2f} / {daily_budget:.2f} 元）",
                 today_cost, month_cost, daily_budget, monthly_budget,
                 daily_usage_percent=daily_usage_percent
             )
@@ -225,13 +225,13 @@ async def check_budget(
         monthly_usage_percent = (month_cost * 100 / monthly_budget).quantize(Decimal("0.01"))
         if month_cost >= monthly_budget:
             return BudgetStatusVO.exceeded(
-                f"本月预算已用完（{month_cost:.2f} / {monthly_budget:.2f} USD）",
+                f"本月预算已用完（{month_cost:.2f} / {monthly_budget:.2f} 元）",
                 today_cost, month_cost, daily_budget, monthly_budget,
                 monthly_usage_percent=monthly_usage_percent
             )
         if monthly_usage_percent >= alert_threshold:
             return BudgetStatusVO.warning(
-                f"本月预算已使用 {monthly_usage_percent:.0f}%（{month_cost:.2f} / {monthly_budget:.2f} USD）",
+                f"本月预算已使用 {monthly_usage_percent:.0f}%（{month_cost:.2f} / {monthly_budget:.2f} 元）",
                 today_cost, month_cost, daily_budget, monthly_budget,
                 monthly_usage_percent=monthly_usage_percent
             )

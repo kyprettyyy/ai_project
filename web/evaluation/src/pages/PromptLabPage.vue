@@ -146,7 +146,7 @@
               <div class="stats-row">
                 <span v-if="result.responseTimeMs">⏱ {{ (result.responseTimeMs / 1000).toFixed(2) }}s</span>
                 <span v-if="result.totalTokens">📊 {{ result.totalTokens }}t</span>
-                <span v-if="result.cost">💰 ${{ result.cost.toFixed(4) }}</span>
+                <span v-if="result.cost">💰 {{ formatCny(result.cost, 'CNY') }}</span>
               </div>
             </div>
 
@@ -610,6 +610,7 @@
 </template>
 
 <script setup lang="ts">
+import { formatCny } from '@/utils/currency'
 import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { message, notification } from 'ant-design-vue'
@@ -1201,6 +1202,17 @@ const handleSubmit = async () => {
     results: initialResults
   })
 
+  // Always settle this round when its transport closes, even without a final done chunk.
+  const settleRound = (error?: string) => {
+    const msg = messages.value[assistantMsgIndex]
+    if (!msg?.results) return
+    msg.results = msg.results.map(result => {
+      if (result.done || result.hasError) return result
+      return { ...result, done: true, ...(error ? { hasError: true, error } : {}) }
+    })
+    messages.value = [...messages.value]
+  }
+
   // 清空已选图片（发送后清空）
   variantImageUrls.value = variants.value.map(() => [])
 
@@ -1267,14 +1279,17 @@ const handleSubmit = async () => {
           }
         },
         onError: () => {
+          settleRound('回答连接中断，已保留收到的内容，请重试')
           isStreaming.value = false
           message.error('实验失败')
         },
         onBusinessError: (data) => {
+          settleRound(data.message || '请求失败，请重试')
           isStreaming.value = false
           message.error(data.message || '请求过于频繁，请稍后再试')
         },
         onComplete: () => {
+          settleRound()
           isStreaming.value = false
 
           // 加载评分
@@ -1302,6 +1317,7 @@ const handleSubmit = async () => {
       }
     )
   } catch (error) {
+    settleRound(error instanceof Error ? error.message : '提交失败')
     isStreaming.value = false
     console.error('提交失败:', error)
     message.error('提交失败: ' + (error instanceof Error ? error.message : '未知错误'))

@@ -111,3 +111,7 @@ export async function updateModel(body: API.ModelUpdateRequest, options?: { [key
     ...(options || {}),
   })
 }
+
+export async function probeModel(id: number | string) {
+  return request('/model/probe', { method: 'POST', data: { id }, timeout: 70000 })
+}

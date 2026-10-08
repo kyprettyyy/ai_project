@@ -64,18 +64,18 @@
         <a-card title="统计摘要对比" :bordered="false" style="margin-top: 16px">
           <a-row :gutter="16">
             <a-col :span="8">
-              <a-statistic title="任务A总成本" :value="statsA.totalCost" prefix="$" :precision="6" />
+              <a-statistic title="任务A总成本" :value="statsA.totalCost ?? '未统计'" prefix="¥" :precision="6" />
             </a-col>
             <a-col :span="8">
-              <a-statistic title="任务B总成本" :value="statsB.totalCost" prefix="$" :precision="6" />
+              <a-statistic title="任务B总成本" :value="statsB.totalCost ?? '未统计'" prefix="¥" :precision="6" />
             </a-col>
             <a-col :span="8">
               <a-statistic
                 title="成本差异"
-                :value="statsB.totalCost - statsA.totalCost"
-                prefix="$"
+                :value="costDifference ?? '未统计'"
+                prefix="¥"
                 :precision="6"
-                :value-style="getDiffStyle(statsB.totalCost - statsA.totalCost)"
+                :value-style="getDiffStyle(costDifference || 0)"
               />
             </a-col>
           </a-row>
@@ -139,7 +139,7 @@
                   <div v-if="record.resultA" class="metrics-cell">
                     <div>响应时间: {{ record.resultA.responseTimeMs }}ms</div>
                     <div>Token: {{ record.resultA.inputTokens }}/{{ record.resultA.outputTokens }}</div>
-                    <div>成本: ${{ record.resultA.cost?.toFixed(6) || '0.000000' }}</div>
+                    <div>成本: {{ formatCny(record.resultA.cost, record.resultA.costCurrency || 'UNKNOWN') }}</div>
                   </div>
                   <span v-else class="no-data">-</span>
                 </template>
@@ -171,7 +171,7 @@
                   <div v-if="record.resultB" class="metrics-cell">
                     <div>响应时间: {{ record.resultB.responseTimeMs }}ms</div>
                     <div>Token: {{ record.resultB.inputTokens }}/{{ record.resultB.outputTokens }}</div>
-                    <div>成本: ${{ record.resultB.cost?.toFixed(6) || '0.000000' }}</div>
+                    <div>成本: {{ formatCny(record.resultB.cost, record.resultB.costCurrency || 'UNKNOWN') }}</div>
                   </div>
                   <span v-else class="no-data">-</span>
                 </template>
@@ -221,7 +221,7 @@
             <a-descriptions-item label="响应时间">{{ selectedRecord.responseTimeMs }}ms</a-descriptions-item>
             <a-descriptions-item label="输入Token">{{ selectedRecord.inputTokens }}</a-descriptions-item>
             <a-descriptions-item label="输出Token">{{ selectedRecord.outputTokens }}</a-descriptions-item>
-            <a-descriptions-item label="成本">${{ selectedRecord.cost?.toFixed(6) || '0.000000' }}</a-descriptions-item>
+            <a-descriptions-item label="成本">{{ formatCny(selectedRecord.cost, selectedRecord.costCurrency || 'UNKNOWN') }}</a-descriptions-item>
           </a-descriptions>
         </div>
       </div>
@@ -230,6 +230,7 @@
 </template>
 
 <script setup lang="ts">
+import { formatCny, toCny } from '@/utils/currency'
 import { ref, computed, watch, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { message } from 'ant-design-vue'
@@ -288,11 +289,13 @@ const compareData = computed(() => {
   }))
 })
 
+const costDifference = computed(() => statsA.value.totalCost == null || statsB.value.totalCost == null ? null : statsB.value.totalCost - statsA.value.totalCost)
+
 const statsA = computed(() => {
   if (resultsA.value.length === 0) {
     return { totalCost: 0, avgResponseTime: 0, totalTokens: 0 }
   }
-  const totalCost = resultsA.value.reduce((sum, r) => sum + (r.cost || 0), 0)
+  const totalCost = resultsA.value.some(r => toCny(r.cost, r.costCurrency || 'UNKNOWN') == null) ? null : resultsA.value.reduce((sum, r) => sum + (toCny(r.cost, r.costCurrency || 'UNKNOWN') || 0), 0)
   const avgResponseTime = Math.round(
     resultsA.value.reduce((sum, r) => sum + (r.responseTimeMs || 0), 0) / resultsA.value.length
   )
@@ -307,7 +310,7 @@ const statsB = computed(() => {
   if (resultsB.value.length === 0) {
     return { totalCost: 0, avgResponseTime: 0, totalTokens: 0 }
   }
-  const totalCost = resultsB.value.reduce((sum, r) => sum + (r.cost || 0), 0)
+  const totalCost = resultsB.value.some(r => toCny(r.cost, r.costCurrency || 'UNKNOWN') == null) ? null : resultsB.value.reduce((sum, r) => sum + (toCny(r.cost, r.costCurrency || 'UNKNOWN') || 0), 0)
   const avgResponseTime = Math.round(
     resultsB.value.reduce((sum, r) => sum + (r.responseTimeMs || 0), 0) / resultsB.value.length
   )

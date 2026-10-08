@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 from app.core.config import get_settings
 from app.core.errors import BusinessException, ErrorCode
 from app.utils.ai_retry_helper import run_with_retry, run_with_retry_async
+from app.utils.currency import model_prices_cny
 from app.utils.cost_calculator import CostCalculator
 from app.utils.model_pricing_cache import get_model_pricing_cached_sync
 from app.core.logging_config import logger
@@ -118,7 +119,6 @@ class AIScoringService(ABC):
         ...
 
 
-JUDGE_MODEL_DEFAULT = "qwen/qwen-plus"
 MAX_JUDGES = 3
 MIN_JUDGES = 2
 SCORING_RETRY_TIMES = 3
@@ -144,17 +144,22 @@ def _parse_evaluation_result(raw: str) -> Optional[EvaluationResult]:
     json_str = _extract_json_from_response(raw)
     if not json_str:
         return None
-    try:
-        data = json.loads(json_str)
-        return EvaluationResult(
-            scores=data.get("scores") or {},
-            total_score=int(data.get("total_score", 0)),
-            rating=int(data.get("rating", 0)),
-            comment=str(data.get("comment") or ""),
-        )
-    except (json.JSONDecodeError, TypeError, ValueError) as e:
-        logger.warning("解析评分 JSON 失败: %s", e)
-        return None
+    decoder = json.JSONDecoder()
+    for match in re.finditer(r"\{", json_str):
+        try:
+            data, _ = decoder.raw_decode(json_str[match.start():])
+            if not isinstance(data, dict) or not isinstance(data.get("scores"), dict):
+                continue
+            total = data.get("total_score", data.get("totalScore"))
+            rating = data.get("rating")
+            if total is None or rating is None or isinstance(total, bool) or isinstance(rating, bool):
+                continue
+            return EvaluationResult(scores=data["scores"], total_score=total,
+                rating=rating, comment=str(data.get("comment") or ""))
+        except (json.JSONDecodeError, TypeError, ValueError):
+            continue
+    logger.warning("评分返回未包含完整有效 JSON，长度={}", len(raw))
+    return None
 
 
 def _is_same_provider(model_id1: Optional[str], model_id2: Optional[str]) -> bool:
@@ -191,11 +196,13 @@ async def _select_judge_models(
     db: AsyncSession, tested_model_name: Optional[str]
 ) -> List[str]:
     """
-    选择评委模型：国内模型、排除被测模型及同提供商，按推荐与更新时间排序，取 2~3 个
+    选择当前模型目录中的评委，排除被测模型及同提供商，按推荐与更新时间排序，最多 3 个
     """
+    from app.services.model_service import ModelService
+    await ModelService(db).refresh_catalog()
     stmt = (
         select(Model.id)
-        .where(Model.is_delete == 0, Model.is_china == 1)
+        .where(Model.is_delete == 0)
         .order_by(Model.recommended.desc(), Model.update_time.desc())
     )
     result = await db.execute(stmt)
@@ -237,7 +244,7 @@ class AIScoringServiceImpl(AIScoringService):
                     model=model_name,
                     messages=[{"role": "user", "content": prompt}],
                     temperature=0.3,
-                    max_tokens=1024,
+                    max_tokens=4096,
                     extra_headers=self._extra_headers,
                 )
             )
@@ -272,14 +279,20 @@ class AIScoringServiceImpl(AIScoringService):
             len(model_response),
             user_id,
         )
-        ev, inp_tok, out_tok = await self._invoke_judge(prompt, JUDGE_MODEL_DEFAULT)
+        if db is None:
+            raise BusinessException(ErrorCode.PARAMS_ERROR, "评分需要可用模型目录")
+        judges = await _select_judge_models(db, None)
+        if not judges:
+            raise BusinessException(ErrorCode.PARAMS_ERROR, "暂无启用的评分模型，请在网关启用对话模型")
+        judge_model = judges[0]
+        ev, inp_tok, out_tok = await self._invoke_judge(prompt, judge_model)
         if ev is None:
             raise BusinessException(
                 ErrorCode.SYSTEM_ERROR, "AI评分失败: 评委返回无法解析"
             )
         if user_id and db and redis_client and (inp_tok + out_tok) > 0:
             await self._record_judge_cost_async(
-                db, redis_client, user_id, JUDGE_MODEL_DEFAULT, inp_tok, out_tok
+                db, redis_client, user_id, judge_model, inp_tok, out_tok
             )
         logger.info("AI评分完成: totalScore=%s, rating=%s", ev.total_score, ev.rating)
         return ev
@@ -305,7 +318,7 @@ class AIScoringServiceImpl(AIScoringService):
                 )
                 m = r.scalar_one_or_none()
                 if m:
-                    return (m.input_price, m.output_price)
+                    return model_prices_cny(m)
                 return (None, None)
             inp_p, out_p = await get_model_pricing_cached_async(
                 redis_client, model_name, _fetch
@@ -353,26 +366,7 @@ class AIScoringServiceImpl(AIScoringService):
             judge_models = await _select_judge_models(db, tested_model_name)
 
         if not judge_models:
-            logger.warning(
-                "未找到可用的评委模型，使用单评委模式: testedModel=%s",
-                tested_model_name,
-            )
-            single = await self.score(
-                question, model_response, user_id, db=db, redis_client=redis_client
-            )
-            js = JudgeScore(
-                model=JUDGE_MODEL_DEFAULT,
-                scores=single.scores,
-                total_score=single.total_score,
-                rating=single.rating,
-                comment=single.comment,
-            )
-            avg = float(single.rating) if single.rating is not None else 0.0
-            return AIScoreResult(
-                judges=[js],
-                average_rating=avg,
-                consistency=0.0,
-            )
+            raise BusinessException(ErrorCode.PARAMS_ERROR, "没有独立于被测模型的可用评委，请启用其他对话模型")
 
         logger.info(
             "开始多评委交叉验证评分: testedModel=%s, judges=%s, questionLength=%s, responseLength=%s, userId=%s",
@@ -443,7 +437,7 @@ def _select_judge_models_sync(
     """
     stmt = (
         select(Model.id)
-        .where(Model.is_delete == 0, Model.is_china == 1)
+        .where(Model.is_delete == 0)
         .order_by(Model.recommended.desc(), Model.update_time.desc())
     )
     result = sync_session.execute(stmt)
@@ -472,7 +466,7 @@ def _invoke_judge_sync(
                 model=model_name,
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0.3,
-                max_tokens=1024,
+                max_tokens=4096,
                 extra_headers=extra_headers or {},
             )
         )
@@ -483,7 +477,7 @@ def _invoke_judge_sync(
         output_tokens = resp.usage.completion_tokens if resp.usage else 0
         return _parse_evaluation_result(content), input_tokens, output_tokens
     except Exception as e:
-        logger.error("评委 %s 同步评分失败: %s", model_name, e)
+        logger.error("评委 {} 同步评分失败: {}", model_name, e)
         return None, 0, 0
 
 
@@ -539,7 +533,7 @@ comment 必须说明覆盖了几项/总共几项、遗漏要点、事实错误�
             )
             m = r.scalar_one_or_none()
             if m:
-                return (m.input_price, m.output_price)
+                return model_prices_cny(m)
             return (None, None)
         inp_p, out_p = (None, None)
         if redis_client:
@@ -557,33 +551,8 @@ comment 必须说明覆盖了几项/总共几项、遗漏要点、事实错误�
         ).quantize(Decimal("0.000001"))
 
     if not judge_models:
-        ev, inp_tok, out_tok = _invoke_judge_sync(
-            openai_sync_client, prompt, JUDGE_MODEL_DEFAULT, headers
-        )
-        if ev is None:
-            return None
-        if user_id and redis_client and (inp_tok + out_tok) > 0:
-            try:
-                from app.services.budget_service import add_cost_sync
-                from app.services.user_model_usage_service import update_user_model_usage_sync
-                cost = _calc_judge_cost(JUDGE_MODEL_DEFAULT, inp_tok, out_tok)
-                if cost and cost > 0:
-                    add_cost_sync(redis_client, user_id, cost)
-                    update_user_model_usage_sync(
-                        sync_session, user_id, JUDGE_MODEL_DEFAULT,
-                        inp_tok + out_tok, cost
-                    )
-            except Exception as e:
-                logger.warning("AI评分成本追踪失败: userId=%s, error=%s", user_id, str(e))
-        js = JudgeScore(
-            model=JUDGE_MODEL_DEFAULT,
-            scores=ev.scores,
-            total_score=ev.total_score,
-            rating=ev.rating,
-            comment=ev.comment,
-        )
-        avg = float(ev.rating) if ev.rating is not None else 0.0
-        return AIScoreResult(judges=[js], average_rating=avg, consistency=0.0)
+        logger.warning("AI评分未执行：当前没有独立评委，被测模型={}", tested_model_name)
+        return None
 
     judge_scores: List[JudgeScore] = []
     judge_usage: List[tuple[str, int, int]] = []

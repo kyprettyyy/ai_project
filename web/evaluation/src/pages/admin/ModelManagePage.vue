@@ -31,9 +31,9 @@
           {{ formatTokens(totalTokensSum) }}
         </template>
       </a-statistic>
-      <a-statistic title="总花费 (USD)">
+      <a-statistic title="总花费 (人民币)">
         <template #formatter>
-          ${{ formatCost(totalCostSum) }}
+          {{ formatCny(formatCost(totalCostSum), 'CNY') }}
         </template>
       </a-statistic>
     </div>
@@ -80,10 +80,10 @@
           {{ formatNumber(record.contextLength) }}
         </template>
         <template v-else-if="column.dataIndex === 'inputPrice'">
-          ${{ formatPrice(record.inputPrice) }}
+          {{ formatCny(record.inputPrice, record.priceCurrency || 'UNKNOWN') }}
         </template>
         <template v-else-if="column.dataIndex === 'outputPrice'">
-          ${{ formatPrice(record.outputPrice) }}
+          {{ formatCny(record.outputPrice, record.priceCurrency || 'UNKNOWN') }}
         </template>
         <template v-else-if="column.dataIndex === 'userTotalTokens'">
           <span :class="{ 'highlight-value': Number(record.userTotalTokens) > 0 }">
@@ -92,7 +92,7 @@
         </template>
         <template v-else-if="column.dataIndex === 'userTotalCost'">
           <span :class="{ 'highlight-value': Number(record.userTotalCost) > 0 }">
-            ${{ formatCostDetail(Number(record.userTotalCost) || 0) }}
+            {{ formatCny(formatCostDetail(Number(record.userTotalCost) || 0), 'CNY') }}
           </span>
         </template>
         <template v-else-if="column.dataIndex === 'tags'">
@@ -111,6 +111,7 @@
 </template>
 
 <script lang="ts" setup>
+import { formatCny } from '@/utils/currency'
 import { computed, onMounted, reactive, ref } from 'vue'
 import { listModels } from '@/api/modelController'
 import { message } from 'ant-design-vue'

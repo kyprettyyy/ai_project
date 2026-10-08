@@ -67,11 +67,20 @@
         :loading="loading"
         :pagination="pagination"
         :row-selection="rowSelection"
+        :scroll="{ x: 1100 }"
         @change="handleTableChange"
         row-key="id"
       >
         <template #bodyCell="{ column, record }">
-          <template v-if="column.key === 'status'">
+          <template v-if="column.key === 'name'">
+            <div>{{ record.name || '未命名' }}</div>
+            <a-tag v-if="record.restartOf" color="purple">重跑 {{ record.restartCount }} 次</a-tag>
+            <a-tag v-if="record.resumeCount" color="orange">继续重试 {{ record.resumeCount }} 次</a-tag>
+            <div v-if="record.restartOf" style="font-size:12px;color:#728096">
+              来源：<a @click="handleView(record.restartOf)">{{ record.restartOf.slice(0, 8) }}</a>
+            </div>
+          </template>
+          <template v-else-if="column.key === 'status'">
             <a-tag :color="getStatusColor(record.status)">
               {{ getStatusText(record.status) }}
             </a-tag>
@@ -89,28 +98,22 @@
             </a-tag>
           </template>
           <template v-else-if="column.key === 'action'">
-            <a-space>
-              <a-button type="link" size="small" @click="handleView(record.id)">
-                查看
-              </a-button>
-              <a-button
-                v-if="record.status === 'completed'"
-                type="link"
-                size="small"
-                @click="handleViewReport(record.id)"
-              >
-                报告
-              </a-button>
-              <a-button type="link" size="small" @click="handleCopyTask(record)">
-                重新测试
-              </a-button>
-              <a-popconfirm
-                title="确定要删除这个任务吗？"
-                @confirm="handleDelete(record.id)"
-              >
-                <a-button type="link" size="small" danger>删除</a-button>
-              </a-popconfirm>
-            </a-space>
+            <div class="task-actions">
+              <a-button type="link" size="small" @click="handleView(record.id)">查看</a-button>
+              <a-button v-if="['completed', 'failed', 'cancelled'].includes(record.status)" type="link" size="small" @click="handleViewReport(record.id)">报告</a-button>
+              <a-button v-if="['failed', 'cancelled'].includes(record.status)" type="link" size="small"
+                :loading="resumingId === record.id" @click="handleResume(record.id)">继续重试</a-button>
+              <a-dropdown :trigger="['click']">
+                <a-button type="link" size="small">更多 <DownOutlined /></a-button>
+                <template #overlay>
+                  <a-menu>
+                    <a-menu-item key="restart" @click="handleCopyTask(record)">从头重新测试</a-menu-item>
+                    <a-menu-divider />
+                    <a-menu-item key="delete" danger @click="confirmDelete(record.id)">删除任务</a-menu-item>
+                  </a-menu>
+                </template>
+              </a-dropdown>
+            </div>
           </template>
         </template>
       </a-table>
@@ -121,11 +124,24 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, reactive } from 'vue'
 import { useRouter } from 'vue-router'
-import { message } from 'ant-design-vue'
-import { PlusOutlined, SearchOutlined, ReloadOutlined } from '@ant-design/icons-vue'
+import { message, Modal } from 'ant-design-vue'
+import { PlusOutlined, SearchOutlined, ReloadOutlined, DownOutlined } from '@ant-design/icons-vue'
 import dayjs, { type Dayjs } from 'dayjs'
-import { listTasks, deleteTask, type TestTask, type TaskQueryRequest } from '@/api/batchTestController'
+import { listTasks, deleteTask, resumeTask, restartTask, type TestTask, type TaskQueryRequest } from '@/api/batchTestController'
 import { listScenes } from '@/api/sceneController'
+
+const resumingId = ref('')
+const handleResume = async (id: string) => {
+  if (resumingId.value) return
+  resumingId.value = id
+  try {
+    const res = await resumeTask(id)
+    if (res.data?.code !== 0) throw new Error(res.data?.message || '继续重试失败')
+    message.success(`保留 ${res.data.data.retainedResults} 条结果，重试 ${res.data.data.retrySubtasks} 项`)
+    await loadTasks()
+  } catch (e: any) { message.error(e.message || '继续重试失败') }
+  finally { resumingId.value = '' }
+}
 
 const router = useRouter()
 
@@ -185,7 +201,7 @@ const columns = [
   {
     title: '操作',
     key: 'action',
-    width: 200,
+    width: 240,
     fixed: 'right'
   }
 ]
@@ -277,6 +293,8 @@ const handleViewReport = (taskId: string) => {
   router.push(`/batch-test/report/${taskId}`)
 }
 
+const confirmDelete = (id: string) => Modal.confirm({ title: '确定要删除这个任务吗？', okText: '删除', okType: 'danger', cancelText: '取消', onOk: () => handleDelete(id) })
+
 const handleDelete = async (taskId: string) => {
   try {
     const res = await deleteTask(taskId)
@@ -292,13 +310,23 @@ const handleDelete = async (taskId: string) => {
   }
 }
 
-const handleCopyTask = (task: TestTask) => {
-  router.push({
-    path: '/batch-test/create',
-    query: {
-      copyFrom: task.id
+const restartingTask = ref(false)
+const handleCopyTask = async (task: TestTask) => {
+  if (restartingTask.value) return
+  restartingTask.value = true
+  try {
+    const res = await restartTask(task.id)
+    if (res.data?.code === 0 && res.data.data) {
+      message.success('已按原配置开始从头测试，原结果已保留')
+      router.push(`/batch-test/detail/${res.data.data}`)
+    } else {
+      message.error(res.data?.message || '重新测试失败')
     }
-  })
+  } catch (error: any) {
+    message.error(error.response?.data?.message || error.message || '重新测试失败')
+  } finally {
+    restartingTask.value = false
+  }
 }
 
 const rowSelection = computed(() => {
@@ -375,6 +403,8 @@ onMounted(() => {
 </script>
 
 <style scoped>
+.task-actions { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+.task-actions :deep(.ant-btn) { padding-inline: 4px; }
 .task-list-page {
   padding: 24px;
   max-width: 1400px;

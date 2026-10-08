@@ -75,9 +75,15 @@ class ReportService:
         )
         test_results: List[TestResult] = list(results_result.scalars().all())
 
-        if not test_results:
-            raise BusinessException(ErrorCode.NOT_FOUND_ERROR, "该任务暂无测试结果")
-
+        from types import SimpleNamespace
+        from app.utils.currency import to_cny, FX_NOTE
+        normalized = []
+        for r in test_results:
+            values = {attr.key: getattr(r, attr.key) for attr in TestResult.__mapper__.column_attrs}
+            values['cost'] = to_cny(r.cost, getattr(r, 'cost_currency', 'UNKNOWN'))
+            values['cost_currency'] = 'CNY' if values['cost'] is not None else 'UNKNOWN'
+            normalized.append(SimpleNamespace(**values))
+        test_results = normalized
         judge = None
         try:
             settings = get_settings()
@@ -88,7 +94,13 @@ class ReportService:
                 judge = response.json()
         except (httpx.HTTPError, ValueError):
             logger.warning('Task judge costs unavailable: %s', task.id)
+        if judge:
+            source_totals = judge.get('totalsByCurrency', {})
+            converted = [to_cny(value, currency) for currency, value in source_totals.items()]
+            judge['totalsByCurrency'] = {'CNY': float(sum(v for v in converted if v is not None))} if converted else {}
+            judge['missingPriceCount'] = judge.get('missingPriceCount', 0) + sum(v is None for v in converted)
         summary = ReportService._calculate_summary(test_results, judge)
+        summary.cost_note += FX_NOTE
         model_statistics = ReportService._calculate_model_statistics(test_results)
         radar_chart = ReportService._generate_radar_chart(test_results, model_statistics)
         bar_chart = ReportService._generate_bar_chart(model_statistics)
@@ -223,23 +235,23 @@ class ReportService:
     ) -> RadarChartDataVO:
         """生成雷达图数据（准确性、完整性、速度、成本效率、人工评测评分）"""
         series_list: List[RadarSeriesVO] = []
+        latencies = [s.avg_response_time_ms for s in model_statistics if s.avg_response_time_ms is not None and s.avg_response_time_ms > 0]
+        comparable_costs = [s.avg_cost for s in model_statistics if s.avg_cost is not None and s.avg_cost >= 0 and s.cost_currency == 'CNY']
         for stat in model_statistics:
             accuracy_norm = ReportService._dimension_average(test_results, stat.model_name, "accuracy", 30)
 
             completeness_norm = ReportService._dimension_average(test_results, stat.model_name, "completeness", 20)
 
-            speed = 0.0
-            if stat.avg_response_time_ms is not None and stat.avg_response_time_ms > 0:
-                speed = min(SCORE_MAX, SPEED_NORMALIZE_DIVISOR / stat.avg_response_time_ms)
+            speed = None
+            if len(latencies) >= 2 and stat.avg_response_time_ms is not None and stat.avg_response_time_ms > 0:
+                speed = 100.0 * min(latencies) / stat.avg_response_time_ms
 
-            cost_eff = 0.0
-            if stat.avg_cost is not None and stat.avg_cost > 0:
-                cost_eff = min(
-                    SCORE_MAX,
-                    (1.0 / (stat.avg_cost * COST_EFFICIENCY_FACTOR + COST_EFFICIENCY_OFFSET)) * 100.0,
-                )
+            cost_eff = None
+            if len(comparable_costs) >= 2 and stat.cost_currency == 'CNY' and stat.avg_cost is not None and stat.avg_cost >= 0:
+                cheapest = min(comparable_costs)
+                cost_eff = 100.0 if stat.avg_cost == 0 else 100.0 * cheapest / stat.avg_cost
 
-            user_sat = 0.0
+            user_sat = None
             if stat.avg_user_rating is not None:
                 user_sat = ReportService._normalize_score(stat.avg_user_rating, 1.0, 5.0)
 
@@ -270,7 +282,7 @@ class ReportService:
                     values.append(sum(valid) / len(valid))
             except (ValueError, TypeError, AttributeError):
                 continue
-        return sum(values) / len(values) if values else 0.0
+        return sum(values) / len(values) if values else None
 
     @staticmethod
     def _normalize_score(value: float, min_val: float, max_val: float) -> float:

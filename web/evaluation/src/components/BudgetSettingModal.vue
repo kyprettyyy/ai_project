@@ -19,7 +19,7 @@
           placeholder="留空表示不限制"
           style="width: 100%"
         />
-        <div class="form-tip">设置每日最大消耗金额(USD)，达到限额将无法继续调用</div>
+        <div class="form-tip">设置每日最大消耗金额(人民币)，达到限额将无法继续调用</div>
       </a-form-item>
 
       <a-form-item label="月预算限额">
@@ -33,7 +33,7 @@
           placeholder="留空表示不限制"
           style="width: 100%"
         />
-        <div class="form-tip">设置每月最大消耗金额(USD)，达到限额将无法继续调用</div>
+        <div class="form-tip">设置每月最大消耗金额(人民币)，达到限额将无法继续调用</div>
       </a-form-item>
 
       <a-form-item label="预警阈值">
@@ -54,19 +54,19 @@
         <a-descriptions :column="1" size="small" bordered>
           <a-descriptions-item label="今日已消耗">
             <span :class="getDailyStatusClass()">
-              ${{ budgetStatus?.todayCost?.toFixed(4) || '0.0000' }}
+              {{ formatCny(budgetStatus?.todayCost, 'CNY') }}
             </span>
             <span v-if="budgetStatus?.dailyBudget" class="budget-limit">
-              / ${{ budgetStatus.dailyBudget.toFixed(2) }}
+              / {{ formatCny(budgetStatus.dailyBudget, 'CNY') }}
               ({{ budgetStatus.dailyUsagePercent?.toFixed(0) || 0 }}%)
             </span>
           </a-descriptions-item>
           <a-descriptions-item label="本月已消耗">
             <span :class="getMonthlyStatusClass()">
-              ${{ budgetStatus?.monthCost?.toFixed(4) || '0.0000' }}
+              {{ formatCny(budgetStatus?.monthCost, 'CNY') }}
             </span>
             <span v-if="budgetStatus?.monthlyBudget" class="budget-limit">
-              / ${{ budgetStatus.monthlyBudget.toFixed(2) }}
+              / {{ formatCny(budgetStatus.monthlyBudget, 'CNY') }}
               ({{ budgetStatus.monthlyUsagePercent?.toFixed(0) || 0 }}%)
             </span>
           </a-descriptions-item>
@@ -80,6 +80,7 @@
 </template>
 
 <script setup lang="ts">
+import { formatCny } from '@/utils/currency'
 import { ref, watch } from 'vue'
 import { message } from 'ant-design-vue'
 import { updateBudget, getBudgetStatus } from '@/api/userController'

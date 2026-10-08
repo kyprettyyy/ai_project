@@ -37,3 +37,11 @@ class Model(Base):
 
     def __repr__(self):
         return f"<Model(id={self.id}, name={self.name}, provider={self.provider})>"
+
+    @property
+    def price_currency(self):
+        import json
+        try:
+            return (json.loads(self.raw_data or '{}').get('pricing') or {}).get('currency', 'UNKNOWN')
+        except (ValueError, TypeError):
+            return 'UNKNOWN'

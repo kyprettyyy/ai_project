@@ -1,4 +1,5 @@
 <template>
+  <p style="color:#728096">{{FX_NOTE}}</p>
   <div class="task-report-page">
     <a-card title="测试报告" :bordered="false">
       <template #extra>
@@ -21,6 +22,10 @@
         <a-descriptions-item label="完成时间">{{ task?.completedAt || '-' }}</a-descriptions-item>
       </a-descriptions>
 
+      <a-alert v-if="task && task.status !== 'completed'" type="warning" show-icon
+        style="margin-bottom:16px" message="未完成任务的部分报告"
+        :description="`任务进度 ${task.completedSubtasks}/${task.totalSubtasks}；当前已保存 ${report?.summary?.totalResults ?? 0} 条结果。统计仅覆盖已有结果，未完成项未纳入均值，不能当作完整批次结论。`" />
+      <a-empty v-if="report && !report.summary.totalResults" description="尚未保存评测结果，可继续重试后查看报告" />
       <!-- 统计摘要 -->
       <a-row :gutter="16" style="margin-bottom: 24px">
         <a-col :span="8">
@@ -50,6 +55,7 @@
       <a-card title="多维度能力对比（雷达图）" :bordered="false" style="margin-bottom: 24px">
         <p>准确性为 AI 事实评分（30分归一化），完整性为 AI 要点覆盖评分（20分归一化）。空回答计0分；未评分回答不计入均分。旧任务未按参考要点评分，不能视为参考要点覆盖率。</p>
         <p v-for="stat in report?.modelStatistics || []" :key="stat.modelName">{{ stat.modelName }}：空回答 {{ (stat as any).emptyCount ?? 0 }}/{{ stat.testCount }}，有评分 {{ (stat as any).scoredCount ?? 0 }}/{{ stat.testCount }}</p>
+        <p style="color:#728096">速度按同一任务内“最快模型耗时 ÷ 当前模型耗时 × 100”计算；成本效率按同任务人民币平均费用相对比较。少于两个可比较模型、缺价格或未打分时显示未统计，不计为零分。</p>
         <div ref="radarChartRef" style="width: 100%; height: 400px"></div>
       </a-card>
 
@@ -210,7 +216,8 @@
 </template>
 
 <script setup lang="ts">
-const money = (value: number | null | undefined, currency?: string) => value == null || !['CNY', 'USD'].includes(currency || '') ? '未统计' : `${currency === 'CNY' ? '¥' : '$'}${value.toFixed(6)}`
+import { formatCny, FX_NOTE, toCny } from '@/utils/currency'
+const money = (value: number | null | undefined, currency?: string) => formatCny(value, currency || 'UNKNOWN')
 
 import { ref, computed, onMounted, watch, nextTick } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
@@ -347,8 +354,15 @@ const loadReport = async () => {
     if (res.data?.code === 0 && res.data.data) {
       report.value = res.data.data
       await nextTick()
-      initRadarChart()
-      initBarChart()
+      // A chart error must not make saved report data inaccessible.
+      for (const initialize of [initRadarChart, initBarChart]) {
+        try {
+          initialize()
+        } catch (error) {
+          console.error('报告图表绘制失败:', error)
+          message.warning('部分图表暂时无法显示，报告统计和详细结果仍可查看')
+        }
+      }
     } else {
       message.error(res.data?.message || '加载报告失败')
     }
@@ -391,22 +405,32 @@ const initRadarChart = () => {
       center: ['50%', '55%'],
       radius: '65%'
     },
-    series: [{
-      type: 'radar',
-      data: report.value.radarChart.series.map((series, index) => ({
-        value: series.values,
-        name: series.modelName,
-        itemStyle: {
-          color: colors[index % colors.length]
-        },
-        areaStyle: {
-          opacity: 0.3
-        },
-        lineStyle: {
-          width: 2
+    series: report.value.radarChart.series.map((series, index) => {
+      const color = colors[index % colors.length]
+      if (series.values.every(v => v != null)) return {
+        type: 'radar', name: series.modelName,
+        data: [{value: series.values, name: series.modelName}],
+        itemStyle: {color}, areaStyle: {opacity: .18}, lineStyle: {width: 2}
+      }
+      return {
+        // Missing dimensions are drawn in pixel coordinates, without Cartesian axes.
+        type: 'custom', coordinateSystem: 'none', name: series.modelName, data: [0],
+        tooltip: {formatter: () => `${series.modelName}<br/>` + report.value!.radarChart.dimensions.map((dim, i) => `${dim}: ${series.values[i] == null ? '未统计' : series.values[i]!.toFixed(2)}`).join('<br/>')},
+        renderItem: (_params: any, api: any) => {
+          const cx = api.getWidth() * .5, cy = api.getHeight() * .55
+          const r = Math.min(api.getWidth(), api.getHeight()) * .325
+          const points = series.values.map((v,i) => v == null ? null : {x: cx - Math.sin(i * Math.PI * 2 / 5) * r * v / 100, y: cy - Math.cos(i * Math.PI * 2 / 5) * r * v / 100})
+          const children: any[] = []
+          points.forEach((point,i) => {
+            if (!point) return
+            const next = points[(i+1)%5]
+            if (next) children.push({type:'line',shape:{x1:point.x,y1:point.y,x2:next.x,y2:next.y},style:{stroke:color,lineWidth:2}})
+            children.push({type:'circle',shape:{cx:point.x,cy:point.y,r:4},style:{fill:color}})
+          })
+          return {type:'group',children}
         }
-      }))
-    }]
+      }
+    })
   }
 
   radarChartInstance.setOption(option)
@@ -942,7 +966,7 @@ const handleExportPDF = async () => {
 
     doc.setFontSize(12)
     doc.setFont('helvetica', 'normal')
-    const taskNameText = `任务名称: ${report.value.taskName || '未命名'}`
+    const taskNameText = `任务名称: ${report.value.taskName || '未命名'}${task.value?.status !== 'completed' ? '（部分报告）' : ''}`
     const taskNameCanvas = await createTextCanvas(taskNameText, 12, pageWidth - 40)
     const taskNameImg = taskNameCanvas.toDataURL('image/png')
     const taskNameHeight = (taskNameCanvas.height * (pageWidth - 40)) / taskNameCanvas.width

@@ -3,12 +3,19 @@
     <h2>模型管理</h2>
 
     <!-- 搜索表单 -->
-    <a-form layout="inline" :model="searchParams" @finish="doSearch">
+    <a-form class="model-filters" layout="inline" :model="searchParams" @finish="doSearch">
       <a-form-item label="模型名称">
         <a-input v-model:value="searchParams.modelName" placeholder="输入模型名称" />
       </a-form-item>
+      <a-form-item label="提供商">
+        <a-select v-model:value="searchParams.providerId" placeholder="全部提供商" style="width: 200px" allow-clear show-search option-filter-prop="label">
+          <a-select-option v-for="provider in providers" :key="provider.id" :value="provider.id" :label="provider.displayName">
+            {{ provider.displayName }}
+          </a-select-option>
+        </a-select>
+      </a-form-item>
       <a-form-item label="模型类型">
-        <a-select v-model:value="searchParams.modelType" placeholder="选择类型" style="width: 150px" allow-clear>
+        <a-select v-model:value="searchParams.modelType" placeholder="全部类型" style="width: 150px" allow-clear>
           <a-select-option value="chat">对话模型</a-select-option>
           <a-select-option value="embedding">向量模型</a-select-option>
           <a-select-option value="image">图像模型</a-select-option>
@@ -27,6 +34,8 @@
     </a-form>
 
     <a-divider />
+
+    <p class="sort-hint">启用的模型优先显示，同一状态下按优先级从高到低排列。测试连接会发送一条短请求，可能产生少量供应商费用，不计入业务调用统计。</p>
 
     <!-- 添加按钮 -->
     <a-button type="primary" @click="showAddModal" style="margin-bottom: 16px">
@@ -61,10 +70,10 @@
           <a-tag v-else color="error">{{ record.healthStatus }}</a-tag>
         </template>
         <template v-else-if="column.dataIndex === 'inputPrice'">
-          ¥{{ record.inputPrice }}/千Token
+          {{ formatCny(record.inputPrice, record.priceCurrency || 'UNKNOWN') }}/千Token
         </template>
         <template v-else-if="column.dataIndex === 'outputPrice'">
-          ¥{{ record.outputPrice }}/千Token
+          {{ formatCny(record.outputPrice, record.priceCurrency || 'UNKNOWN') }}/千Token
         </template>
         <template v-else-if="column.dataIndex === 'avgLatency'">
           {{ record.avgLatency }}/ms
@@ -74,6 +83,7 @@
         </template>
         <template v-else-if="column.key === 'action'">
           <a-space>
+            <a-button type="link" size="small" :loading="probingIds.has(record.id)" :disabled="record.modelType !== 'chat'" @click="doProbe(record)">测试连接</a-button>
             <a-button type="link" size="small" @click="showEditModal(record)">编辑</a-button>
             <a-button type="link" size="small" danger @click="doDelete(record.id)">删除</a-button>
           </a-space>
@@ -144,10 +154,11 @@
 </template>
 
 <script lang="ts" setup>
+import { formatCny, toCny } from '@/utils/currency'
 import { computed, onMounted, reactive, ref } from 'vue'
-import { addModel, deleteModel, listModelVoByPage, updateModel } from '@/api/modelController'
+import { addModel, deleteModel, listModelVoByPage, updateModel, probeModel } from '@/api/modelController'
 import { listProviderVo } from '@/api/modelProviderController'
-import { message } from 'ant-design-vue'
+import { message, Modal } from 'ant-design-vue'
 
 // 表格列定义
 const columns = [
@@ -214,18 +225,39 @@ const columns = [
   {
     title: '操作',
     key: 'action',
-    width: 150,
+    width: 230,
     fixed: 'right',
   },
 ]
 
 const data = ref<any[]>([])
+const probingIds = ref(new Set<string | number>())
+const doProbe = async (record: any) => {
+  if (probingIds.value.has(record.id)) return
+  probingIds.value.add(record.id)
+  try {
+    const res = await probeModel(record.id)
+    if (res.data.code !== 0) {
+      message.error(res.data.message || '测试失败')
+      return
+    }
+    const result = res.data.data
+    if (result.healthy) message.success(`${record.modelName} 连接正常，耗时 ${result.latencyMs} ms`)
+    else Modal.error({ title: `${record.modelName} 连接测试失败`, content: result.error || '未知错误' })
+    await loadData()
+  } catch (error: any) {
+    message.error(error?.message || '连接测试失败')
+  } finally {
+    probingIds.value.delete(record.id)
+  }
+}
 const loading = ref(false)
 const providers = ref<any[]>([])
 
 // 搜索参数
 const searchParams = reactive({
   modelName: '',
+  providerId: undefined as string | number | undefined,
   modelType: undefined,
   status: undefined,
   pageNum: 1,
@@ -256,6 +288,7 @@ const formData = reactive({
   contextLength: 4096,
   inputPrice: 0,
   outputPrice: 0,
+  priceCurrency: 'CNY',
   priority: 100,
   defaultTimeout: 60000,
   status: 'active',
@@ -300,6 +333,7 @@ const doSearch = () => {
 // 重置搜索
 const resetSearch = () => {
   searchParams.modelName = ''
+  searchParams.providerId = undefined
   searchParams.modelType = undefined
   searchParams.status = undefined
   searchParams.pageNum = 1
@@ -331,8 +365,9 @@ const showEditModal = (record: any) => {
     modelType: record.modelType,
     description: record.description,
     contextLength: record.contextLength,
-    inputPrice: record.inputPrice,
-    outputPrice: record.outputPrice,
+    inputPrice: record.priceCurrency === 'USD' ? toCny(record.inputPrice, 'USD') ?? 0 : record.inputPrice,
+    outputPrice: record.priceCurrency === 'USD' ? toCny(record.outputPrice, 'USD') ?? 0 : record.outputPrice,
+    priceCurrency: 'CNY',
     priority: record.priority,
     defaultTimeout: record.defaultTimeout,
     status: record.status,
@@ -352,6 +387,7 @@ const resetFormData = () => {
     contextLength: 4096,
     inputPrice: 0,
     outputPrice: 0,
+  priceCurrency: 'CNY',
     priority: 100,
     defaultTimeout: 60000,
     status: 'active',
@@ -407,5 +443,12 @@ onMounted(() => {
 <style scoped>
 #modelManagePage {
   padding: 20px;
+}
+.model-filters {
+  gap: 12px 0;
+}
+.sort-hint {
+  color: #666;
+  margin-bottom: 12px;
 }
 </style>

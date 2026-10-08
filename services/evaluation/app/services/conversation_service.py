@@ -36,6 +36,7 @@ from app.utils.code_extractor import extract_code_blocks
 from app.utils.prompt_guardrail import validate as validate_prompt
 from app.core.errors import BusinessException, ErrorCode
 from app.core.config import get_settings
+from app.utils.currency import model_prices_cny
 from app.utils.cost_calculator import CostCalculator
 from app.utils.model_pricing_cache import get_model_pricing_cached_async
 from app.services.budget_service import add_cost_async, check_budget
@@ -953,7 +954,7 @@ class ConversationService:
                 async def _fetch_pricing():
                     async with AsyncSessionLocal() as db:
                         m = await self._get_model_info(db, model_name)
-                        return (m.input_price, m.output_price) if m else (None, None)
+                        return model_prices_cny(m)
                 input_price, output_price = await get_model_pricing_cached_async(
                     self.redis_client, model_name, _fetch_pricing
                 )
@@ -965,8 +966,7 @@ class ConversationService:
                     model_name,
                     input_tokens,
                     output_tokens,
-                    model_info.input_price,
-                    model_info.output_price
+                    *model_prices_cny(model_info)
                 )
             
             code_blocks_list = []

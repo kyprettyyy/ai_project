@@ -76,7 +76,7 @@
           :step="0.1"
           style="width: 100%"
         >
-          <template #addonAfter>USD</template>
+          <template #addonAfter>人民币</template>
         </a-input-number>
         <div class="field-tips">每日API调用成本上限，留空表示不限制</div>
       </a-form-item>
@@ -92,7 +92,7 @@
           :step="1"
           style="width: 100%"
         >
-          <template #addonAfter>USD</template>
+          <template #addonAfter>人民币</template>
         </a-input-number>
         <div class="field-tips">每月API调用成本上限，留空表示不限制</div>
       </a-form-item>

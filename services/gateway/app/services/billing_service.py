@@ -27,7 +27,8 @@ class BillingService:
             Decimal(model.input_price or 0) * 1000, Decimal(model.output_price or 0) * 1000,
             getattr(model, "price_currency", "UNKNOWN"), getattr(model, "pricing_config", None),
             datetime.now(timezone.utc))
-        return cost or Decimal("0")
+        from app.utils.currency import to_cny
+        return to_cny(cost, getattr(model, 'price_currency', 'UNKNOWN')) or Decimal('0')
 
     async def calculate_cost(self, model_id: int | None, prompt_tokens: int, completion_tokens: int) -> Decimal:
         if model_id is None:

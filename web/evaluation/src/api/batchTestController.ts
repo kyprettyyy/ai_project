@@ -1,9 +1,25 @@
 import request from '../request'
 
+export async function restartTask(id: string) {
+  return request.post('/batch-test/task/restart', { id })
+}
+
+export async function resumeTask(id: string) {
+  return request.post('/batch-test/task/resume', { id })
+}
+
+export function scoreMissing(id: string) {
+  return request.post('/batch-test/task/score-missing', { id })
+}
+
 export interface TestTask {
+  scoringProgress?: { status: string; total: number; processed: number; succeeded: number; failed: number; errors: Array<{ resultId?: string; message: string }> }
   id: string
   userId: number
   name?: string
+  restartOf?: string
+  restartCount?: number
+  resumeCount?: number
   sceneId: string
   models: string
   config?: string
@@ -29,6 +45,7 @@ export interface TestResult {
   responseTimeMs?: number
   inputTokens?: number
   outputTokens?: number
+  costCurrency?: string
   cost?: number
   userRating?: number
   aiScore?: string

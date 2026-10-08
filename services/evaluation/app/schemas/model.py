@@ -29,6 +29,7 @@ class ModelVO(BaseModel):
     description: Optional[str]
     provider: Optional[str]
     context_length: Optional[int] = Field(None, alias="contextLength")
+    price_currency: str = Field("UNKNOWN", alias="priceCurrency")
     input_price: Optional[Decimal] = Field(None, alias="inputPrice")
     output_price: Optional[Decimal] = Field(None, alias="outputPrice")
     recommended: bool

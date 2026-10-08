@@ -61,7 +61,10 @@ def run_subtask_sync(sub_task_data: dict) -> dict:
     result_id = str(uuid.uuid4())
 
     session = get_sync_session()
+    client = None
+    from app.services.batch_cancellation import register_client, unregister_client, is_cancelled
     try:
+        if is_cancelled(task_id): return {"skipped": True, "taskId": task_id}
         task_result = session.execute(
             select(TestTask).where(TestTask.id == task_id, TestTask.is_delete == 0)
         )
@@ -95,6 +98,7 @@ def run_subtask_sync(sub_task_data: dict) -> dict:
             default_headers=GATEWAY_EXTRA_HEADERS,
         )
 
+        register_client(task_id, client)
         SUBTASK_TIMEOUT_SECONDS = 120
         response = client.chat.completions.create(
             model=model_name,
@@ -108,6 +112,12 @@ def run_subtask_sync(sub_task_data: dict) -> dict:
         business_code = getattr(response, "code", None)
         if business_code not in (None, 0):
             raise RuntimeError(getattr(response, "message", None) or f"Gateway error {business_code}")
+        # A benchmark answer must come from the requested model, never a fallback.
+        actual_model = getattr(response, "model", None)
+        if actual_model != model_name:
+            raise RuntimeError(
+                f"测评模型不匹配：请求 {model_name}，实际返回 {actual_model or '未提供模型标识'}；未计入测评结果"
+            )
         response_time_ms = int((time.time() - start_time) * 1000)
         output_text = ""
         input_tokens = 0
@@ -157,6 +167,9 @@ def run_subtask_sync(sub_task_data: dict) -> dict:
         )
         session.add(test_result)
 
+        if is_cancelled(task_id):
+            session.rollback()
+            return {"skipped": True, "taskId": task_id}
         enable_ai_scoring = _check_enable_ai_scoring(config)
         if enable_ai_scoring and output_text:
             from app.services.ai_scoring_service import run_ai_scoring_sync
@@ -256,8 +269,7 @@ def run_subtask_sync(sub_task_data: dict) -> dict:
                 session.execute(
                     text("""
                         UPDATE test_task
-                        SET completedSubtasks = completedSubtasks + 1,
-                            status = CASE WHEN status = 'cancelled' THEN status ELSE 'failed' END
+                        SET status = CASE WHEN status = 'cancelled' THEN status ELSE 'failed' END
                         WHERE id = :task_id AND isDelete = 0
                     """),
                     {"task_id": task_id}
@@ -275,4 +287,5 @@ def run_subtask_sync(sub_task_data: dict) -> dict:
         raise
 
     finally:
+        if client is not None: unregister_client(task_id, client)
         session.close()

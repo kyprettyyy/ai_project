@@ -8,8 +8,8 @@ from pydantic import BaseModel, ConfigDict, Field, field_serializer
 
 class BudgetUpdateRequest(BaseModel):
     """预算更新请求"""
-    daily_budget: Optional[Decimal] = Field(None, description="日预算限额(USD)", alias="dailyBudget")
-    monthly_budget: Optional[Decimal] = Field(None, description="月预算限额(USD)", alias="monthlyBudget")
+    daily_budget: Optional[Decimal] = Field(None, description="日预算限额(人民币)", alias="dailyBudget")
+    monthly_budget: Optional[Decimal] = Field(None, description="月预算限额(人民币)", alias="monthlyBudget")
     alert_threshold: Optional[int] = Field(None, description="预警阈值(%)", alias="alertThreshold")
 
     model_config = ConfigDict(populate_by_name=True)

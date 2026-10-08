@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import get_settings
 from app.core.errors import BusinessException, ErrorCode
 from app.utils.ai_retry_helper import run_with_retry_async
+from app.utils.currency import model_prices_cny
 from app.utils.cost_calculator import CostCalculator
 from app.utils.model_pricing_cache import get_model_pricing_cached_async
 from app.core.logging_config import logger
@@ -20,7 +21,6 @@ from app.schemas.prompt import PromptOptimizationVO
 from app.services.budget_service import add_cost_async
 from app.services.user_model_usage_service import update_user_model_usage
 
-DEFAULT_EVALUATION_MODEL = "qwen/qwen-plus"
 
 OPTIMIZATION_PROMPT_TEMPLATE = """
 你是一位专业的提示词工程专家。请分析以下提示词，并提供优化建议。
@@ -132,7 +132,15 @@ class PromptOptimizationService:
         if not original_prompt or not original_prompt.strip():
             raise BusinessException(ErrorCode.PARAMS_ERROR, "原始提示词不能为空")
 
-        model = (evaluation_model or "").strip() or DEFAULT_EVALUATION_MODEL
+        model = (evaluation_model or "").strip()
+        if not model:
+            if db is None:
+                raise BusinessException(ErrorCode.PARAMS_ERROR, "请选择启用的评估模型")
+            from app.services.model_service import ModelService
+            models = await ModelService(db).get_all_models()
+            if not models:
+                raise BusinessException(ErrorCode.PARAMS_ERROR, "暂无启用的评估模型")
+            model = models[0].id
         ai_response_section = ""
         if ai_response and ai_response.strip():
             ai_response_section = "\n## AI回答\n" + ai_response.strip() + "\n"
@@ -177,7 +185,7 @@ class PromptOptimizationService:
                     )
                     m = r.scalar_one_or_none()
                     if m:
-                        return (m.input_price, m.output_price)
+                        return model_prices_cny(m)
                     return (None, None)
                 input_price, output_price = await get_model_pricing_cached_async(
                     redis_client, model, _fetch_pricing

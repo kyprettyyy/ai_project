@@ -10,7 +10,7 @@ from loguru import logger
 
 
 def _cache_key(model_name: str) -> str:
-    return f"{CacheConstant.MODEL_PRICING_KEY_PREFIX}{model_name}"
+    return f"{CacheConstant.MODEL_PRICING_KEY_PREFIX}cny-20261007:{model_name}"
 
 
 def _serialize_pricing(input_price: Optional[Decimal], output_price: Optional[Decimal]) -> str:

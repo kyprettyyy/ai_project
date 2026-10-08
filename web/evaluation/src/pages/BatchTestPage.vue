@@ -253,7 +253,7 @@
             <div class="metrics-cell">
               <div>响应时间: {{ record.responseTimeMs }}ms</div>
               <div>Token: {{ record.inputTokens }}/{{ record.outputTokens }}</div>
-              <div>成本: ${{ record.cost?.toFixed(6) || '0.000000' }}</div>
+              <div>成本: {{ formatCny(record.cost, record.costCurrency || 'UNKNOWN') }}</div>
             </div>
           </template>
           <template v-else-if="column.key === 'userRating'">
@@ -297,7 +297,7 @@
             <div class="modal-metrics">
               <span>响应时间: {{ selectedRecord.responseTimeMs }}ms</span>
               <span>Token: {{ selectedRecord.inputTokens }}/{{ selectedRecord.outputTokens }}</span>
-              <span>成本: ${{ selectedRecord.cost?.toFixed(6) || '0.000000' }}</span>
+              <span>成本: {{ formatCny(selectedRecord.cost, selectedRecord.costCurrency || 'UNKNOWN') }}</span>
             </div>
           </div>
         </div>
@@ -372,6 +372,7 @@
 </template>
 
 <script setup lang="ts">
+import { formatCny } from '@/utils/currency'
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { message } from 'ant-design-vue'
@@ -897,7 +898,13 @@ const loadTaskConfig = async (taskId: string) => {
   }
 }
 
+let modelRefreshTimer: ReturnType<typeof setInterval> | undefined
+const refreshAvailableModels = () => {
+  if (!loadingModels.value && !document.hidden) loadModels(currentSearchText.value, false)
+}
 onMounted(async () => {
+  modelRefreshTimer = setInterval(refreshAvailableModels, 15000)
+  window.addEventListener('focus', refreshAvailableModels)
   await loadScenes()
   await loadModels(undefined, false)
   
@@ -908,6 +915,8 @@ onMounted(async () => {
 })
 
 onUnmounted(() => {
+  clearInterval(modelRefreshTimer)
+  window.removeEventListener('focus', refreshAvailableModels)
   if (wsClient) {
     wsClient.disconnect()
   }

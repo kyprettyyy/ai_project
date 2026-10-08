@@ -116,3 +116,11 @@ async def list_active_model_by_type(model_type: str, db: AsyncSession = Depends(
     if not model_type:
         raise BusinessException(ErrorCode.PARAMS_ERROR, "参数错误")
     return success(await ModelService(db).list_active_by_type(model_type))
+
+
+@router.post('/probe', response_model=BaseResponse[dict])
+async def probe_model_endpoint(payload: DeleteRequest,
+    _: object = Depends(require_role(UserRole.ADMIN)),
+    db: AsyncSession = Depends(get_db_session)):
+    from app.services.model_probe_service import probe_model
+    return success(await probe_model(db, payload.id))

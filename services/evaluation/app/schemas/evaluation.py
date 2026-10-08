@@ -11,8 +11,8 @@ class EvaluationResult(BaseModel):
     单次 AI 评分结果（单评委）
     """
     scores: Dict[str, int] = Field(default_factory=dict, description="各维度分数 accuracy/relevance/completeness/clarity/creativity")
-    total_score: int = Field(..., alias="total_score", description="总分(100分制)")
-    rating: int = Field(..., description="评级(1-10)")
+    total_score: int = Field(..., ge=0, le=100, alias="total_score", description="总分(100分制)")
+    rating: float = Field(..., ge=0, le=10, description="评级(0-10)")
     comment: str = Field("", description="简短评价")
 
     class Config:
@@ -25,8 +25,8 @@ class JudgeScore(BaseModel):
     """
     model: str = Field(..., description="评委模型名称")
     scores: Dict[str, int] = Field(default_factory=dict, description="各维度分数")
-    total_score: int = Field(..., alias="totalScore", description="总分")
-    rating: int = Field(..., description="评级(1-10)")
+    total_score: int = Field(..., ge=0, le=100, alias="totalScore", description="总分")
+    rating: float = Field(..., ge=0, le=10, description="评级(0-10)")
     comment: str = Field("", description="评委评语")
 
     class Config:

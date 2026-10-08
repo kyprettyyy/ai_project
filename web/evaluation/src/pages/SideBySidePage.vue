@@ -150,7 +150,7 @@
 
                       <!-- 成本 -->
                       <span v-if="resp.cost" class="metric-item">
-                        💰 ${{ resp.cost.toFixed(4) }}
+                        💰 {{ formatCny(resp.cost, 'CNY') }}
                       </span>
                     </div>
                     <div class="action-buttons">
@@ -242,7 +242,7 @@
                           />
                           <div v-if="img.cost || img.totalTokens" class="image-metrics">
                             <span v-if="img.totalTokens">📊 {{ img.totalTokens }}t</span>
-                            <span v-if="img.cost">💰 ${{ img.cost.toFixed(4) }}</span>
+                            <span v-if="img.cost">💰 {{ formatCny(img.cost, 'CNY') }}</span>
                           </div>
                         </div>
                       </div>
@@ -453,6 +453,7 @@
 </template>
 
 <script setup lang="ts">
+import { formatCny } from '@/utils/currency'
 import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { message, notification } from 'ant-design-vue'

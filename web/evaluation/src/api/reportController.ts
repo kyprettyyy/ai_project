@@ -32,7 +32,7 @@ export interface ModelStatisticsVO {
 
 export interface RadarSeriesVO {
   modelName: string
-  values: number[]
+  values: (number | null)[]
 }
 
 export interface RadarChartDataVO {

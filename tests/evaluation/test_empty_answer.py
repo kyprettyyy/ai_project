@@ -15,7 +15,7 @@ class EmptyAnswerTest(unittest.TestCase):
         session.execute.side_effect = [task_result, no_model, MagicMock(), MagicMock(), task_result]
         client = MagicMock()
         client.chat.completions.create.return_value = SimpleNamespace(
-            choices=[SimpleNamespace(message=SimpleNamespace(content=''))],
+            model='model', choices=[SimpleNamespace(message=SimpleNamespace(content=''))],
             usage=SimpleNamespace(prompt_tokens=10, completion_tokens=0))
         with patch('app.services.batch_test_worker.get_sync_session', return_value=session), \
              patch('app.services.batch_test_worker.OpenAI', return_value=client), \
@@ -29,3 +29,18 @@ class EmptyAnswerTest(unittest.TestCase):
         self.assertIn('resultId', result)
         session.commit.assert_called_once()
         session.rollback.assert_not_called()
+
+    def test_fallback_or_missing_model_is_not_saved(self):
+        for actual in ('deepseek', None):
+            with self.subTest(actual=actual):
+                task = SimpleNamespace(status='running', config='{}')
+                session = MagicMock()
+                session.execute.return_value.scalar_one_or_none.return_value = task
+                client = MagicMock()
+                client.chat.completions.create.return_value = SimpleNamespace(model=actual)
+                with patch('app.services.batch_test_worker.get_sync_session', return_value=session), \
+                     patch('app.services.batch_test_worker.OpenAI', return_value=client), \
+                     patch('app.services.batch_test_worker.get_redis_client_sync', return_value=None):
+                    with self.assertRaisesRegex(RuntimeError, '测评模型不匹配'):
+                        run_subtask_sync({'taskId':'batch','modelName':'kimi','promptContent':'test','userId':0})
+                session.add.assert_not_called()

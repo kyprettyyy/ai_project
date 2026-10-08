@@ -155,28 +155,28 @@
             <a-switch v-model:checked="enableWebSearch" />
           </div>
 
-          <!-- PDF 解析按钮 -->
-          <a-button
-            size="large"
-            :type="selectedPluginKey === 'pdf_parser' ? 'primary' : 'default'"
-            @click="togglePlugin('pdf_parser')"
-            class="plugin-button"
-          >
-            <FilePdfOutlined />
-            PDF 解析
+          <a-button size="large" class="plugin-button" @click="openFilePicker('file_parser')">
+            <FilePdfOutlined /> 上传文件
           </a-button>
-
           <!-- 图片识别按钮 -->
           <a-button
             size="large"
             :type="selectedPluginKey === 'image_recognition' ? 'primary' : 'default'"
-            @click="togglePlugin('image_recognition')"
+            @click="openFilePicker('image_recognition')"
             class="plugin-button"
           >
             <PictureOutlined />
             图片识别
           </a-button>
         </div>
+
+        <input
+          ref="fileInput"
+          type="file"
+          :accept="selectedPluginKey === 'file_parser' ? undefined : selectedPluginKey === 'pdf_parser' ? '.pdf,application/pdf' : 'image/*'"
+          style="display: none"
+          @change="handleFileInputChange"
+        />
 
         <!-- 文件信息显示（在输入框上方） -->
         <div v-if="uploadedFile" class="file-info-bar">
@@ -460,24 +460,21 @@ const loadEnabledPlugins = async () => {
   }
 }
 
-// 切换插件（PDF 解析 / 图片识别）
-const togglePlugin = (pluginKey: string) => {
-  if (selectedPluginKey.value === pluginKey) {
-    // 如果已选中，则取消
-    selectedPluginKey.value = ''
-    clearFile()
-  } else {
-    // 选中新插件（互斥，关闭联网搜索）
-    enableWebSearch.value = false
-    selectedPluginKey.value = pluginKey
-    // 如果已有文件，检查是否匹配
-    if (uploadedFile.value) {
-      const isValid = validateFileForPlugin(uploadedFile.value, pluginKey)
-      if (!isValid) {
-        clearFile()
-      }
-    }
-  }
+// 文件选择与粘贴共用同一套校验和上传流程。
+const fileInput = ref<HTMLInputElement | null>(null)
+const openFilePicker = async (pluginKey: string) => {
+  enableWebSearch.value = false
+  await nextTick()
+  selectedPluginKey.value = pluginKey
+  await nextTick()
+  fileInput.value?.click()
+}
+
+const handleFileInputChange = (event: Event) => {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  if (file) handleFileSelect(file)
+  input.value = '' // 允许移除后重新选择同一个文件。
 }
 
 // 监听联网搜索开关变化
@@ -528,6 +525,7 @@ const handleFileSelect = (file: File) => {
     return
   }
 
+  clearFile()
   uploadedFile.value = file
 
   // 如果是图片，生成预览 URL
@@ -541,7 +539,7 @@ const handleFileSelect = (file: File) => {
 // 验证文件是否匹配插件
 const validateFileForPlugin = (file: File, pluginKey: string): boolean => {
   const isImage = file.type.startsWith('image/')
-  const isPdf = file.type === 'application/pdf'
+  const isPdf = file.type === 'application/pdf' || /\.pdf$/i.test(file.name)
 
   if (pluginKey === 'pdf_parser') {
     if (!isPdf) {
@@ -573,11 +571,12 @@ const getInputPlaceholder = () => {
   if (!canSendMessage.value) {
     return '请先选择一个模型'
   }
+  if (selectedPluginKey.value === 'file_parser') return '选择或粘贴文件，然后输入您的问题...'
   if (selectedPluginKey.value === 'pdf_parser') {
-    return '粘贴 PDF 文件，然后输入您的问题...'
+    return '点击 PDF 解析选择文件，或粘贴文件，然后输入问题...'
   }
   if (selectedPluginKey.value === 'image_recognition') {
-    return '粘贴图片，然后输入您的问题...'
+    return '点击图片识别选择图片，或粘贴图片，然后输入问题...'
   }
   return '输入您的问题...'
 }

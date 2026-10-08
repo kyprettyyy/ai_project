@@ -94,6 +94,22 @@ async def get_task(
     return BaseResponse(code=0, data=BatchTestService._task_to_dict(task), message="ok")
 
 
+@router.post("/task/restart", response_model=BaseResponse[str], summary="按原配置从头测试")
+async def restart_task(payload: BatchTestDeleteRequest, request: Request, db: AsyncSession = Depends(get_db)):
+    await check_rate_limit(_get_redis(request), request, RateLimitType.USER, 3, 60,
+        message="批量测试创建过于频繁，请稍后再试")
+    user = await UserService.get_login_user(db, request)
+    task_id = await BatchTestService.restart_batch_test(db, payload.id, user.id)
+    return BaseResponse(code=0, data=task_id, message="ok")
+
+
+@router.post("/task/resume", response_model=BaseResponse[dict], summary="保留结果继续重试")
+async def resume_task(payload: BatchTestDeleteRequest, request: Request, db: AsyncSession = Depends(get_db)):
+    user = await UserService.get_login_user(db, request)
+    result = await BatchTestService.resume_batch_test(db, payload.id, user.id)
+    return BaseResponse(code=0, data=result, message="ok")
+
+
 @router.post("/task/list/page", response_model=BaseResponse[dict], summary="分页查询任务列表")
 async def list_tasks(
     query_request: TaskQueryRequest,
@@ -189,3 +205,12 @@ async def update_test_result_rating(
     user_rating = req_data.get("user_rating") if "user_rating" in req_data else req_data.get("userRating")
     result = await BatchTestService.update_test_result_rating(db, result_id, user_rating, user.id)
     return BaseResponse(code=0, data=result, message="ok")
+
+
+@router.post("/task/score-missing", response_model=BaseResponse[dict], summary="仅补充缺失 AI 评分")
+async def score_missing(request_body: BatchTestDeleteRequest, request: Request, db: AsyncSession = Depends(get_db)):
+    from app.services.missing_score_service import start_missing_scores
+    user = await UserService.get_login_user(db, request)
+    task = await BatchTestService.get_task(db, request_body.id, user.id)
+    progress = await start_missing_scores(db, task)
+    return BaseResponse(code=0, data=progress, message="ok")

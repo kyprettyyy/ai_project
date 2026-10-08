@@ -102,3 +102,25 @@ class StreamFailureTest(unittest.IsolatedAsyncioTestCase):
         self.assertIn('余额不足',payload['error']['message'])
         service.model_invoke_service.invoke_stream_chunk.assert_not_called()
         self.assertEqual(service.request_log_service.log_request.await_args.kwargs['status'],'failed')
+
+class BenchmarkIsolationTest(unittest.IsolatedAsyncioTestCase):
+    async def test_fixed_benchmark_has_no_fallback_but_chat_keeps_fallback(self):
+        from types import SimpleNamespace
+        from unittest.mock import AsyncMock
+        for run_id in ('benchmark-task', None):
+            service = ChatService(None)
+            service._build_routing_context = AsyncMock()
+            model = SimpleNamespace(id=1, model_key='kimi', provider_id=2)
+            service.routing_service.select_model = AsyncMock(return_value=model)
+            service.routing_service.get_fallback_models = AsyncMock(return_value=['deepseek'])
+            service.cache_service.get_cached_response = AsyncMock(return_value=None)
+            service._invoke_with_fallback = AsyncMock(return_value='answer')
+            request = ChatRequest(model='kimi', messages=[ChatMessage(role='user',content='test')], evaluation_run_id=run_id)
+            self.assertEqual(await service.chat(request,0,None),'answer')
+            self.assertEqual(service._invoke_with_fallback.await_args.kwargs['fallback_models'], [] if run_id else ['deepseek'])
+            if run_id:
+                service.routing_service.get_fallback_models.assert_not_awaited()
+                service.cache_service.get_cached_response.assert_not_awaited()
+            else:
+                service.routing_service.get_fallback_models.assert_awaited_once()
+                service.cache_service.get_cached_response.assert_awaited_once()

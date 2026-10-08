@@ -41,6 +41,8 @@ class BatchTestService:
         Raises:
             BusinessException: 业务异常
         """
+        from app.services.model_service import ModelService
+        await ModelService(db).refresh_catalog()
         scene_id = request_data.get("scene_id") or request_data.get("sceneId")
         if not scene_id or not str(scene_id).strip():
             raise BusinessException(ErrorCode.PARAMS_ERROR, "场景ID不能为空")
@@ -72,6 +74,7 @@ class BatchTestService:
         total_subtasks = len(models) * len(prompts)
 
         config_map = {"taskType": request_data.get("task_type") or request_data.get("taskType") or "general"}
+        config_map["promptSnapshot"] = [{"id": p.id, "title": p.title, "content": p.content} for p in prompts]
         if request_data.get("temperature") is not None:
             config_map["temperature"] = request_data["temperature"]
         if request_data.get("top_p") is not None:
@@ -152,6 +155,107 @@ class BatchTestService:
         start_batch(task_id, subtasks, run_subtask_sync)
 
         return task_id
+
+    @staticmethod
+    async def restart_batch_test(db: AsyncSession, task_id: str, user_id: int) -> str:
+        """Start a fresh run from the original configuration and frozen prompts."""
+        from app.services.model_service import ModelService
+        from app.services.batch_test_runner import start_batch, is_batch_running
+        from app.services.batch_test_worker import run_subtask_sync
+        original = await BatchTestService.get_task(db, task_id, user_id)
+        if original.status in ("pending", "running") or is_batch_running(task_id):
+            raise BusinessException(ErrorCode.PARAMS_ERROR, "任务仍在执行，请结束后再从头测试")
+        models = json.loads(original.models)
+        config = json.loads(original.config or '{}')
+        available = {m.id for m in await ModelService(db).get_all_models()}
+        missing = [m for m in models if m not in available]
+        if missing:
+            raise BusinessException(ErrorCode.PARAMS_ERROR, "原任务模型已停用或删除，请先启用：" + "、".join(missing))
+        prompts = config.get('promptSnapshot')
+        if not prompts:
+            current = list((await db.execute(select(ScenePrompt).where(
+                ScenePrompt.scene_id == original.scene_id, ScenePrompt.is_delete == 0
+            ).order_by(ScenePrompt.prompt_index.asc()))).scalars().all())
+            prompts = [{"id": p.id, "title": p.title, "content": p.content} for p in current]
+            saved = list((await db.execute(select(TestResult).where(
+                TestResult.task_id == task_id, TestResult.is_delete == 0))).scalars().all())
+            content = {p['id']: p['content'] for p in prompts}
+            if len(prompts) * len(models) != original.total_subtasks or any(
+                content.get(r.prompt_id) != r.input_prompt for r in saved
+            ):
+                raise BusinessException(ErrorCode.PARAMS_ERROR, "原任务未保存题目快照且场景已变更，请重新配置测试")
+        if not prompts or not models:
+            raise BusinessException(ErrorCode.PARAMS_ERROR, "原任务缺少模型或题目")
+        config['promptSnapshot'] = prompts
+        config.pop('resumeCount', None)
+        config.pop('aiScoringProgress', None)
+        config['restartOf'] = task_id
+        config['restartCount'] = int(config.get('restartCount', 0)) + 1
+        config['originalName'] = config.get('originalName') or original.name or '未命名'
+        run_name = f"{config['originalName']}（重跑{config['restartCount']} · {datetime.now():%m-%d %H:%M:%S}）"
+        new_id = str(uuid.uuid4())
+        new_task = TestTask(id=new_id, user_id=user_id, name=run_name,
+            scene_id=original.scene_id, models=original.models,
+            config=json.dumps(config, ensure_ascii=False), status='pending',
+            total_subtasks=len(models)*len(prompts), completed_subtasks=0, is_delete=0)
+        db.add(new_task)
+        await db.commit()
+        subtasks = [{"taskId": new_id, "sceneId": original.scene_id,
+            "promptId": p['id'], "promptTitle": p.get('title', ''),
+            "promptContent": p['content'], "modelName": m, "userId": user_id}
+            for m in models for p in prompts]
+        start_batch(new_id, subtasks, run_subtask_sync)
+        return new_id
+
+    @staticmethod
+    async def resume_batch_test(db: AsyncSession, task_id: str, user_id: int) -> dict:
+        from datetime import datetime
+        from app.services.batch_test_runner import start_batch, is_batch_running
+        from app.services.batch_test_worker import run_subtask_sync
+        task = (await db.execute(select(TestTask).where(
+            TestTask.id == task_id, TestTask.is_delete == 0).with_for_update())).scalar_one_or_none()
+        if task is None:
+            raise BusinessException(ErrorCode.NOT_FOUND_ERROR, "任务不存在")
+        if task.user_id != user_id:
+            raise BusinessException(ErrorCode.NO_AUTH_ERROR, "无权限重试该任务")
+        from app.services.missing_score_service import _jobs as scoring_jobs
+        if task_id in scoring_jobs:
+            raise BusinessException(ErrorCode.PARAMS_ERROR, "正在补评分，请等待完成后继续重试")
+        if is_batch_running(task_id) or task.status in ("pending", "running"):
+            raise BusinessException(ErrorCode.PARAMS_ERROR, "任务仍在执行，请等待当前请求结束后重试")
+        if task.status not in ("failed", "cancelled"):
+            raise BusinessException(ErrorCode.PARAMS_ERROR, "只有失败或取消的任务可以继续重试")
+        config = json.loads(task.config or '{}')
+        models = json.loads(task.models)
+        saved = list((await db.execute(select(TestResult).where(
+            TestResult.task_id == task_id, TestResult.is_delete == 0))).scalars().all())
+        prompts = config.get('promptSnapshot')
+        if not prompts:
+            current = list((await db.execute(select(ScenePrompt).where(
+                ScenePrompt.scene_id == task.scene_id, ScenePrompt.is_delete == 0))).scalars().all())
+            prompts = [{"id": p.id, "title": p.title, "content": p.content} for p in current]
+            content = {p['id']: p['content'] for p in prompts}
+            if len(prompts)*len(models) != task.total_subtasks or any(
+                    content.get(r.prompt_id) != r.input_prompt for r in saved):
+                raise BusinessException(ErrorCode.PARAMS_ERROR, "原场景题目已变更，无法安全续跑，请重新测试")
+        done = {(r.model_name, r.prompt_id) for r in saved}
+        pairs = {(m, p['id']) for m in models for p in prompts}
+        if len(pairs) != task.total_subtasks or not done.issubset(pairs):
+            raise BusinessException(ErrorCode.PARAMS_ERROR, "任务数据不一致，无法继续重试")
+        subtasks = [{"taskId": task_id, "sceneId": task.scene_id, "promptId": p['id'],
+                     "promptTitle": p['title'], "promptContent": p['content'],
+                     "modelName": m, "userId": user_id}
+                    for m in models for p in prompts if (m, p['id']) not in done]
+        task.completed_subtasks = len(done)
+        task.completed_at = None if subtasks else datetime.now()
+        task.status = 'pending' if subtasks else 'completed'
+        config['promptSnapshot'] = prompts
+        config['resumeCount'] = config.get('resumeCount', 0)+1
+        task.config = json.dumps(config, ensure_ascii=False)
+        await db.commit()
+        if subtasks:
+            start_batch(task_id, subtasks, run_subtask_sync)
+        return {"taskId": task_id, "retainedResults": len(done), "retrySubtasks": len(subtasks)}
 
     @staticmethod
     async def get_task(db: AsyncSession, task_id: str, user_id: int) -> TestTask:
@@ -279,7 +383,12 @@ class BatchTestService:
         """
         task = await BatchTestService.get_task(db, task_id, user_id)
         task.is_delete = 1
+        task.status = 'cancelled'
         await db.commit()
+        from app.services.batch_cancellation import cancel_batch_calls
+        from app.services.batch_test_runner import cancel_batch
+        cancel_batch_calls(task_id)
+        cancel_batch(task_id)
         return True
 
     @staticmethod
@@ -400,10 +509,23 @@ class BatchTestService:
     def _task_to_dict(task: TestTask) -> dict:
         """将TestTask对象转为前端需要的字典格式"""
         cost_val = task.cost if hasattr(task, 'cost') else None
+        try:
+            run_config = json.loads(task.config or '{}')
+        except (ValueError, TypeError):
+            run_config = {}
+        progress = run_config.get("aiScoringProgress")
+        if progress and progress.get("status") == "running":
+            from app.services.missing_score_service import _jobs
+            if task.id not in _jobs:
+                progress = {**progress, "status": "interrupted"}
         return {
             "id": task.id,
             "userId": task.user_id,
             "name": task.name,
+            "restartOf": run_config.get("restartOf"),
+            "restartCount": run_config.get("restartCount", 1 if run_config.get("restartOf") else 0),
+            "resumeCount": run_config.get("resumeCount", 0),
+            "scoringProgress": progress,
             "sceneId": task.scene_id,
             "models": task.models,
             "config": task.config,
@@ -435,6 +557,7 @@ class BatchTestService:
             "inputTokens": result.input_tokens,
             "outputTokens": result.output_tokens,
             "cost": cost_val,
+            "costCurrency": getattr(result, "cost_currency", "UNKNOWN"),
             "userRating": result.user_rating,
             "aiScore": result.ai_score,
             "createTime": result.create_time.isoformat() if result.create_time else None,

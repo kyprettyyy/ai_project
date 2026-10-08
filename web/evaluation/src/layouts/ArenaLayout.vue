@@ -276,19 +276,19 @@
                   <div class="stat-value">{{ formatNumber(statistics.totalTokens || 0) }}</div>
                 </div>
                 <div class="stat-item">
-                  <div class="stat-label">总花费 (USD)</div>
-                  <div class="stat-value">${{ formatCost(statistics.totalCost || 0) }}</div>
+                  <div class="stat-label">总花费 (人民币估算)</div>
+                  <div class="stat-value">{{ formatCny(formatCost(statistics.totalCost || 0), 'CNY') }}</div>
                 </div>
                 <div class="stat-item" v-if="statistics.dailyBudget">
                   <div class="stat-label">今日消耗</div>
                   <div class="stat-value" :style="{ color: getDailyBudgetColor() }">
-                    ${{ formatCost(statistics.todayCost || 0) }} / ${{ formatCost(statistics.dailyBudget) }}
+                    {{ formatCny(formatCost(statistics.todayCost || 0), 'CNY') }} / {{ formatCny(formatCost(statistics.dailyBudget), 'CNY') }}
                   </div>
                 </div>
                 <div class="stat-item" v-if="statistics.monthlyBudget">
                   <div class="stat-label">本月消耗</div>
                   <div class="stat-value" :style="{ color: getMonthlyBudgetColor() }">
-                    ${{ formatCost(statistics.monthCost || 0) }} / ${{ formatCost(statistics.monthlyBudget) }}
+                    {{ formatCny(formatCost(statistics.monthCost || 0), 'CNY') }} / {{ formatCny(formatCost(statistics.monthlyBudget), 'CNY') }}
                   </div>
                 </div>
               </div>
@@ -328,6 +328,7 @@
 </template>
 
 <script setup lang="ts">
+import { formatCny } from '@/utils/currency'
 import { computed, ref, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { message } from 'ant-design-vue'

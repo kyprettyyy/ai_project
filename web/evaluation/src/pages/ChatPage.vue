@@ -51,7 +51,7 @@
           </div>
           <div class="message-meta" v-if="msg.tokens || msg.cost">
             <span v-if="msg.tokens">Tokens: {{ msg.tokens }}</span>
-            <span v-if="msg.cost">Cost: ${{ msg.cost.toFixed(6) }}</span>
+            <span v-if="msg.cost">Cost: {{ formatCny(msg.cost, 'CNY') }}</span>
             <span v-if="msg.time">Time: {{ msg.time }}ms</span>
           </div>
         </div>
@@ -67,6 +67,7 @@
 </template>
 
 <script setup lang="ts">
+import { formatCny } from '@/utils/currency'
 import { ref, nextTick } from 'vue';
 import { message as antMessage } from 'ant-design-vue';
 import { marked } from 'marked';

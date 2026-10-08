@@ -66,7 +66,7 @@ class RadarSeriesVO(BaseModel):
     )
 
     model_name: str = Field(..., description="模型名称", alias="modelName")
-    values: List[float] = Field(..., description="各维度数值")
+    values: List[Optional[float]] = Field(..., description="各维度数值；None表示未统计")
 
 
 class RadarChartDataVO(BaseModel):

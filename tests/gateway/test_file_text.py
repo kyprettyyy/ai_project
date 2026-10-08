@@ -10,13 +10,13 @@ class FileTextTest(unittest.TestCase):
         assert extract_file_text('中文'.encode('gb18030'), 'note.txt') == '中文'
         with self.assertRaisesRegex(ValueError, '暂不支持'):
             extract_file_text(b'PK', 'archive.zip')
-    
+
     def test_docx_extracts_text(self):
         buf = io.BytesIO()
         with zipfile.ZipFile(buf, 'w') as z:
             z.writestr('word/document.xml', '<w:document xmlns:w="urn:word"><w:p><w:t>Hello</w:t></w:p></w:document>')
         assert extract_file_text(buf.getvalue(), 'sample.docx') == 'Hello'
-    
+
     def test_xlsx_shared_strings(self):
         buf = io.BytesIO()
         ns = 'http://schemas.openxmlformats.org/spreadsheetml/2006/main'
